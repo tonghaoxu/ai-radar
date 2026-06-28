@@ -1,24 +1,9 @@
 import { v4 as uuidv4 } from 'uuid';
 import { upsertArticle, updateSourceLastCrawled } from '../db';
+import { isAiRelated } from './keywords';
 
 const HN_TOP_STORIES = 'https://hacker-news.firebaseio.com/v0/topstories.json';
 const HN_ITEM = 'https://hacker-news.firebaseio.com/v0/item';
-
-// AI 相关关键词
-const AI_KEYWORDS = [
-  'ai', 'artificial intelligence', 'llm', 'gpt', 'claude', 'gemini', 'deepseek',
-  'openai', 'anthropic', 'model', 'transformer', 'neural network', 'machine learning',
-  'deep learning', 'nlp', 'computer vision', 'reinforcement learning', 'agent',
-  'rag', 'fine-tuning', 'inference', 'gpu', 'cuda', 'token', 'embedding',
-  'diffusion', 'stable diffusion', 'midjourney', 'sora', 'generative',
-  'chatbot', 'copilot', 'langchain', 'vector database', 'prompt',
-  'mcp', 'skill', 'agi', 'alignment', 'safety', 'hallucination',
-];
-
-function isAiRelated(title: string): boolean {
-  const t = title.toLowerCase();
-  return AI_KEYWORDS.some(kw => t.includes(kw));
-}
 
 export async function crawlHackerNews(maxStories = 50): Promise<number> {
   try {
@@ -52,7 +37,7 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
           summary: item.text?.substring(0, 500) || '',
           author: item.by || '',
           published_at: new Date(item.time * 1000).toISOString(),
-          category: '综合',
+          category: 'AI综合',
           language: 'en',
         });
         count++;

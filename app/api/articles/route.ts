@@ -24,13 +24,14 @@ export async function GET(request: NextRequest) {
   const language = searchParams.get('language') || undefined;
   const isStarred = searchParams.get('isStarred') === 'true' || undefined;
   const search = searchParams.get('search') || undefined;
+  const date = searchParams.get('date') || undefined;
   const limit = parseInt(searchParams.get('limit') || '50');
   const offset = parseInt(searchParams.get('offset') || '0');
 
   try {
     const [articles, total, sources] = await Promise.all([
-      Promise.resolve(getArticles({ category, sourceId, language, isStarred, search, limit, offset })),
-      Promise.resolve(getArticleCount({ category, sourceId })),
+      Promise.resolve(getArticles({ category, sourceId, language, isStarred, search, date, limit, offset })),
+      Promise.resolve(getArticleCount({ category, sourceId, date })),
       Promise.resolve(getSources()),
     ]);
 

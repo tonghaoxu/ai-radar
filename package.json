@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "npx tsx scripts/seed.ts",
+    "seed:products": "npx tsx scripts/seed-products.ts",
     "crawl": "npx tsx -e \"const { crawlAll } = require('./lib/crawler/index.ts'); crawlAll().then(r => console.log(JSON.stringify(r, null, 2)));\""
   },
   "dependencies": {

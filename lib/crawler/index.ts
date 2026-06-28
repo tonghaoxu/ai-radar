@@ -1,6 +1,8 @@
 import { crawlAllRss } from './rss';
 import { crawlAllArxiv } from './arxiv';
 import { crawlHackerNews } from './hackernews';
+import { crawlAllWeb } from './web';
+import { fetchOpenRouterModels } from './models';
 
 export interface CrawlResult {
   source: string;
@@ -15,11 +17,13 @@ export async function crawlAll(): Promise<CrawlResult[]> {
 
   console.log('🚀 开始全量数据抓取...\n');
 
-  // 并行抓取
-  const [rssResults, arxivCount, hnCount] = await Promise.all([
+  // 并行抓取：RSS + 网页 + arXiv + HN + 模型
+  const [rssResults, webResults, arxivCount, hnCount, modelCount] = await Promise.all([
     crawlAllRss(),
+    crawlAllWeb(),
     crawlAllArxiv(),
     crawlHackerNews(50),
+    fetchOpenRouterModels(),
   ]);
 
   // RSS 结果
@@ -27,11 +31,19 @@ export async function crawlAll(): Promise<CrawlResult[]> {
     results.push({ source: r.source, type: 'rss', count: r.count });
   }
 
+  // 网页抓取结果
+  for (const r of webResults) {
+    results.push({ source: r.source, type: 'web', count: r.count });
+  }
+
   // arXiv 结果
   results.push({ source: 'arXiv', type: 'paper', count: arxivCount });
 
   // HackerNews 结果
   results.push({ source: 'HackerNews', type: 'community', count: hnCount });
+
+  // OpenRouter 模型数据
+  results.push({ source: 'OpenRouter', type: 'model', count: modelCount });
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   const totalArticles = results.reduce((sum, r) => sum + r.count, 0);

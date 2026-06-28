@@ -41,4 +41,5 @@ yarn-error.log*
 next-env.d.ts
 
 # database
-/data/
+/data/*
+!/data/products.json

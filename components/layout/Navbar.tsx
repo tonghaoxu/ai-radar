@@ -11,10 +11,11 @@ import { useTheme } from 'next-themes';
 import { Moon, Sun } from 'lucide-react';
 
 const navItems = [
-  { href: '/', label: '资讯流', icon: '📰' },
-  { href: '/models', label: '模型追踪', icon: '🤖' },
-  { href: '/papers', label: '论文', icon: '📄' },
-  { href: '/products', label: 'AI产品', icon: '🧩' },
+  { href: '/', label: '首页' },
+  { href: '/news', label: '资讯流' },
+  { href: '/models', label: '模型追踪' },
+  { href: '/papers', label: '论文' },
+  { href: '/products', label: 'AI产品' },
 ];
 
 export function Navbar() {
@@ -25,7 +26,7 @@ export function Navbar() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      window.location.href = `/?search=${encodeURIComponent(searchQuery.trim())}`;
+      window.location.href = `/news?search=${encodeURIComponent(searchQuery.trim())}`;
     }
   };
 
@@ -48,10 +49,8 @@ export function Navbar() {
                 <Button
                   variant={pathname === item.href ? 'secondary' : 'ghost'}
                   size="sm"
-                  className="gap-1.5"
                 >
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
+                  {item.label}
                 </Button>
               </Link>
             ))}
@@ -91,10 +90,9 @@ export function Navbar() {
           <Link key={item.href} href={item.href}>
             <Badge
               variant={pathname === item.href ? 'default' : 'outline'}
-              className="gap-1 whitespace-nowrap"
+              className="whitespace-nowrap"
             >
-              <span>{item.icon}</span>
-              <span>{item.label}</span>
+              {item.label}
             </Badge>
           </Link>
         ))}

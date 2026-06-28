@@ -8,7 +8,7 @@ const CATEGORIES = [
   '算力芯片',
   '开源生态',
   'AI技术',
-  '综合',
+  'AI综合',
 ];
 
 interface CategoryFilterProps {

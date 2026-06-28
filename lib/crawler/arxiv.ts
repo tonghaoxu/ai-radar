@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { upsertPaper, upsertArticle } from '../db';
 
-const ARXIV_API = 'http://export.arxiv.org/api/query';
+const ARXIV_API = 'https://export.arxiv.org/api/query';
 
 interface ArxivEntry {
   id: string;
@@ -36,7 +36,13 @@ export async function fetchArxivPapers(options: {
       signal: AbortSignal.timeout(20000),
     });
 
+    if (!response.ok) {
+      console.error(`[arXiv Error] ${category}: HTTP ${response.status} ${response.statusText}`);
+      return 0;
+    }
+
     const xml = await response.text();
+    console.log(`[arXiv] ${category}: 收到响应 ${xml.length} 字节`);
 
     // 简单 XML 解析（避免额外依赖）
     const entries = parseArxivXml(xml);
@@ -98,7 +104,7 @@ export async function crawlAllArxiv(): Promise<number> {
 // 轻量 XML 解析（提取 <entry> 中的关键字段）
 function parseArxivXml(xml: string): ArxivEntry[] {
   const entries: ArxivEntry[] = [];
-  const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+  const entryRegex = /<(?:atom:)?entry>([\s\S]*?)<\/(?:atom:)?entry>/g;
   let match;
 
   while ((match = entryRegex.exec(xml)) !== null) {

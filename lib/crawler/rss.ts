@@ -1,6 +1,7 @@
 import RssParser from 'rss-parser';
 import { v4 as uuidv4 } from 'uuid';
 import { upsertArticle, updateSourceLastCrawled, getSources } from '../db';
+import { isAiRelated } from './keywords';
 
 const parser = new RssParser({
   timeout: 15000,
@@ -21,7 +22,7 @@ function inferCategory(title: string, sourceName: string): string {
   if (/论文|paper|arxiv|研究|research/i.test(t)) return '学术研究';
   if (/开源|open.source|github|license/i.test(t)) return '开源生态';
   if (/agent|智能体|mcp|skill|rag/i.test(t)) return 'AI技术';
-  return '综合';
+  return 'AI综合';
 }
 
 // 推断语言
@@ -39,12 +40,20 @@ export async function crawlRssSource(source: {
   try {
     const feed = await parser.parseURL(source.rss_url);
 
+    let filteredCount = 0;
+
     for (const item of feed.items || []) {
       const title = item.title?.trim() || '无标题';
       const url = item.link?.trim();
       const publishedAt = item.pubDate || item.isoDate || new Date().toISOString();
 
       if (!url) continue;
+
+      // 所有源均过 AI 关键词（中英文），避免财经/股票等无关内容混入
+      if (!isAiRelated(title)) {
+        filteredCount++;
+        continue;
+      }
 
       const articleId = uuidv4();
       upsertArticle({
@@ -63,9 +72,12 @@ export async function crawlRssSource(source: {
     }
 
     updateSourceLastCrawled(source.id);
-    console.log(`[RSS] ${source.name}: ${count} 篇文章`);
+    const filterMsg = filteredCount > 0 ? ` (过滤掉 ${filteredCount} 篇非AI)` : '';
+    console.log(`[RSS] ${source.name}: ${count} 篇文章${filterMsg}`);
+    return count;
   } catch (err: any) {
     console.error(`[RSS Error] ${source.name}: ${err.message}`);
+    return 0;
   }
   return count;
 }

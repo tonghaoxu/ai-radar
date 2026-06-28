@@ -48,7 +48,7 @@ function initTables(db: Database.Database) {
       author TEXT,
       published_at TEXT,
       crawled_at TEXT DEFAULT (datetime('now')),
-      category TEXT DEFAULT '综合',
+      category TEXT DEFAULT 'AI综合',
       language TEXT DEFAULT 'zh',
       is_read INTEGER DEFAULT 0,
       is_starred INTEGER DEFAULT 0
@@ -165,11 +165,12 @@ export function getArticles(options: {
   language?: string;
   isStarred?: boolean;
   search?: string;
+  date?: string;
   limit?: number;
   offset?: number;
 } = {}) {
   const db = getDb();
-  const { category, sourceId, language, isStarred, search, limit = 50, offset = 0 } = options;
+  const { category, sourceId, language, isStarred, search, date, limit = 50, offset = 0 } = options;
 
   if (search) {
     return db.prepare(`
@@ -200,6 +201,10 @@ export function getArticles(options: {
   }
   if (isStarred) {
     sql += ' AND a.is_starred = 1';
+  }
+  if (date) {
+    sql += " AND date(a.published_at) = ?";
+    params.push(date);
   }
 
   sql += ' ORDER BY a.published_at DESC LIMIT ? OFFSET ?';
@@ -242,7 +247,18 @@ export function upsertArticle(article: {
       category = @category,
       crawled_at = datetime('now')
   `);
-  return stmt.run(article);
+  return stmt.run({
+    id: article.id,
+    source_id: article.source_id,
+    title: article.title,
+    url: article.url,
+    summary: article.summary ?? null,
+    content_snippet: article.content_snippet ?? null,
+    author: article.author ?? null,
+    published_at: article.published_at ?? null,
+    category: article.category ?? 'AI综合',
+    language: article.language ?? 'zh',
+  });
 }
 
 export function markArticleRead(id: string, isRead: boolean) {
@@ -255,9 +271,9 @@ export function markArticleStarred(id: string, isStarred: boolean) {
   db.prepare('UPDATE articles SET is_starred = ? WHERE id = ?').run(isStarred ? 1 : 0, id);
 }
 
-export function getArticleCount(options: { category?: string; sourceId?: string } = {}) {
+export function getArticleCount(options: { category?: string; sourceId?: string; date?: string } = {}) {
   const db = getDb();
-  const { category, sourceId } = options;
+  const { category, sourceId, date } = options;
   let sql = 'SELECT COUNT(*) as count FROM articles WHERE 1=1';
   const params: any[] = [];
 
@@ -268,6 +284,10 @@ export function getArticleCount(options: { category?: string; sourceId?: string 
   if (sourceId) {
     sql += ' AND source_id = ?';
     params.push(sourceId);
+  }
+  if (date) {
+    sql += ' AND date(published_at) = ?';
+    params.push(date);
   }
 
   return (db.prepare(sql).get(...params) as any).count;
@@ -422,7 +442,18 @@ export function upsertPaper(paper: {
       categories = @categories,
       crawled_at = datetime('now')
   `);
-  return stmt.run(paper);
+  return stmt.run({
+    id: paper.id,
+    arxiv_id: paper.arxiv_id ?? null,
+    title: paper.title,
+    authors: paper.authors ?? null,
+    abstract: paper.abstract ?? null,
+    categories: paper.categories ?? null,
+    primary_category: paper.primary_category ?? null,
+    published_at: paper.published_at ?? null,
+    pdf_url: paper.pdf_url ?? null,
+    code_url: paper.code_url ?? null,
+  });
 }
 
 export function getPaperCategories() {

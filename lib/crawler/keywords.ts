@@ -1,0 +1,65 @@
+/**
+ * 共享的 AI 相关关键词列表
+ * 用于过滤非 AI 专题的 RSS 源（中英文均支持）
+ */
+
+// 英文 AI 关键词
+const EN_AI_KEYWORDS = [
+  'ai', 'artificial intelligence', 'llm', 'gpt', 'claude', 'gemini', 'deepseek',
+  'openai', 'anthropic', 'model', 'transformer', 'neural network', 'machine learning',
+  'deep learning', 'nlp', 'computer vision', 'reinforcement learning', 'agent',
+  'rag', 'fine-tuning', 'inference', 'gpu', 'cuda', 'token', 'embedding',
+  'diffusion', 'stable diffusion', 'midjourney', 'sora', 'generative',
+  'chatbot', 'copilot', 'langchain', 'vector database', 'prompt',
+  'mcp', 'skill', 'agi', 'alignment', 'safety', 'hallucination',
+  'reasoning', 'multimodal', 'mixture of experts', 'moe',
+  'neural', 'language model', 'autoregressive', 'boltzmann',
+  'attention mechanism', 'encoder', 'decoder', 'sequence',
+  'mistral', 'llama', 'qwen', 'cursor', 'perplexity',
+  'robotics', 'embodied', 'autonomous', 'self-driving',
+  'api', 'function calling', 'tool use', 'code generation',
+  'image generation', 'text-to-image', 'text-to-video',
+  'whisper', 'speech', 'tts', 'stt', 'voice',
+];
+
+// 中文 AI 关键词
+const ZH_AI_KEYWORDS = [
+  'AI', '人工智能', '大模型', '大语言模型', '深度学习', '机器学习',
+  '神经网络', '自然语言处理', '计算机视觉', '强化学习', '生成式',
+  'AIGC', 'GPT', 'ChatGPT', 'Claude', 'Gemini', 'DeepSeek',
+  'OpenAI', 'Anthropic', 'LLM', 'Transformer', 'Agent', '智能体',
+  '推理', '训练', '微调', '预训练', '多模态', '对齐', '幻觉',
+  '算力', 'GPU', '芯片', '英伟达', 'NVIDIA', 'H100', 'B200',
+  '开源模型', '开源大模型', '闭源', '参数', '上下文', 'Token',
+  '提示词', 'Prompt', 'RAG', '检索增强', '向量数据库',
+  '扩散模型', 'Stable Diffusion', 'Midjourney', 'Sora',
+  '文生图', '文生视频', '图生视频', '视频生成', '图片生成',
+  '语音识别', '语音合成', 'TTS', '具身智能', '人形机器人',
+  '自动驾驶', '智能驾驶', '编程助手', '代码生成', 'AI编程',
+  'Cursor', 'Copilot', '通义', '千问', '文心', 'ERNIE',
+  '豆包', 'Kimi', '月之暗面', '智谱', '百川', '零一万物',
+  '混元', '元宝', 'DeepSeek', '深度求索', '字节', '百度',
+  '阿里', '腾讯', '机器人', 'Robot', '具身', '机械臂',
+  'MCP', '工具调用', '函数调用', '语义理解', '知识图谱',
+];
+
+// 短关键词（≤3 字符）需要用单词边界匹配，避免 "aimed" 匹配 "ai"
+const SHORT_KW = new Set(['ai', 'gpu', 'tts', 'stt', 'moe', 'rag', 'mcp', 'nlp', 'agi', 'api']);
+
+/** 判断标题（中英文）是否与 AI 相关 */
+export function isAiRelated(title: string): boolean {
+  const t = title.toLowerCase();
+  // 先检查英文关键词
+  for (const kw of EN_AI_KEYWORDS) {
+    if (SHORT_KW.has(kw)) {
+      // 短关键词：单词边界匹配
+      const re = new RegExp(`\\b${kw}\\b`, 'i');
+      if (re.test(title)) return true;
+    } else {
+      if (t.includes(kw)) return true;
+    }
+  }
+  // 再检查中文关键词
+  if (ZH_AI_KEYWORDS.some(kw => title.includes(kw))) return true;
+  return false;
+}
