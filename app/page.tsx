@@ -67,9 +67,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
-      <div className="flex-1 max-w-2xl mx-auto px-6 py-12 w-full">
+      <div className="flex-1 max-w-2xl mx-auto px-6 py-6 w-full">
         {/* 顶部：日期和统计 */}
-        <div className="mb-10">
+        <div className="mb-4">
           <h1 className="text-3xl font-bold tracking-tight mb-2">AI Radar</h1>
           <p className="text-muted-foreground">
             {dateStr} {weekday} · 今日 {total} 篇 · {sourceCount} 个来源
@@ -94,7 +94,7 @@ export default function HomePage() {
         ) : (
           <>
             {/* 五张卡片 */}
-            <div className="space-y-3 mb-10">
+            <div className="space-y-2 mb-6">
               {top5.map((article) => (
                 <a
                   key={article.id}
@@ -103,12 +103,12 @@ export default function HomePage() {
                   rel="noopener noreferrer"
                   className="block group"
                 >
-                  <div className="rounded-xl border bg-card p-5 transition-all duration-150 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5">
-                    <h2 className="font-semibold leading-snug mb-1.5 line-clamp-2 group-hover:text-primary transition-colors">
+                  <div className="rounded-xl border bg-card p-4 transition-all duration-150 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5">
+                    <h2 className="font-semibold leading-snug mb-1 line-clamp-2 group-hover:text-primary transition-colors">
                       {article.title}
                     </h2>
-                    <p className="text-sm text-muted-foreground line-clamp-1 mb-2">
-                      {article.summary || '暂无摘要'}
+                    <p className="text-sm text-muted-foreground line-clamp-1 mb-1.5">
+                      {article.summary || `来自 ${article.source_name} 的 AI 资讯`}
                     </p>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>{article.source_name}</span>
@@ -122,7 +122,7 @@ export default function HomePage() {
             </div>
 
             {/* AI 总结按钮（预留） */}
-            <div className="flex justify-center mb-8">
+            <div className="flex justify-center mb-4">
               <button
                 onClick={() => alert('AI 总结功能即将上线')}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"

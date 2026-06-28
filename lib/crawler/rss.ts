@@ -25,6 +25,17 @@ function inferCategory(title: string, sourceName: string): string {
   return 'AI综合';
 }
 
+// 安全解析日期字符串为 ISO 8601，rss-parser 的 isoDate 可能为 null
+function safeParseDate(dateStr: string): string | null {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  } catch {
+    return null;
+  }
+}
+
 // 推断语言
 function inferLanguage(title: string): string {
   // 如果标题包含中文字符，判定为中文
@@ -45,7 +56,9 @@ export async function crawlRssSource(source: {
     for (const item of feed.items || []) {
       const title = item.title?.trim() || '无标题';
       const url = item.link?.trim();
-      const publishedAt = item.pubDate || item.isoDate || new Date().toISOString();
+      const publishedAt = item.isoDate
+        || (item.pubDate ? safeParseDate(item.pubDate) : null)
+        || new Date().toISOString();
 
       if (!url) continue;
 
