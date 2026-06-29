@@ -66,84 +66,78 @@ export default function HomePage() {
   const top5 = articles.slice(0, 5);
 
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
-      <div className="flex-1 max-w-2xl mx-auto px-6 py-8 w-full">
-        {/* 顶部：日期和统计 */}
-        <div className="mb-6">
-          <p className="text-muted-foreground">
-            {dateStr} {weekday} · 今日 {total} 篇 · {sourceCount} 个来源
-          </p>
+    <div className="max-w-2xl mx-auto px-6 h-[calc(100vh-3.5rem)] flex flex-col">
+      {/* 加载状态 */}
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-
-        {/* 加载状态 */}
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : top5.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <p className="mb-4">暂无今日资讯</p>
-            <Link
-              href="/news"
-              className="text-sm underline underline-offset-4 hover:text-foreground"
-            >
-              前往资讯流手动抓取 →
-            </Link>
-          </div>
-        ) : (
-          <>
-            {/* 五张卡片 */}
-            <div className="space-y-3 mb-6">
-              {top5.map((article) => (
-                <a
-                  key={article.id}
-                  href={article.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block group"
-                >
-                  <div className="rounded-xl border bg-card p-4 transition-all duration-150 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5">
-                    <h2 className="font-semibold leading-snug mb-1 line-clamp-2 group-hover:text-primary transition-colors">
-                      {article.title}
-                    </h2>
-                    <p className="text-sm text-muted-foreground line-clamp-1 mb-1.5">
-                      {article.summary || `来自 ${article.source_name} 的 AI 资讯`}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{article.source_name}</span>
-                      <span>·</span>
-                      <span>{formatTime(article.published_at)}</span>
-                      <ExternalLink className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+      ) : top5.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+          <p className="mb-4">暂无今日资讯</p>
+          <Link
+            href="/news"
+            className="text-sm underline underline-offset-4 hover:text-foreground"
+          >
+            前往资讯流手动抓取 →
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* 五张卡片 — 垂直居中 */}
+          <div className="flex-1 flex flex-col justify-center space-y-3">
+            {top5.map((article) => (
+              <a
+                key={article.id}
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block group"
+              >
+                <div className="rounded-xl border bg-card p-4 transition-all duration-150 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5">
+                  <h2 className="font-semibold leading-snug mb-1 line-clamp-2 group-hover:text-primary transition-colors">
+                    {article.title}
+                  </h2>
+                  <p className="text-sm text-muted-foreground line-clamp-1 mb-1.5">
+                    {article.summary || `来自 ${article.source_name} 的 AI 资讯`}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{article.source_name}</span>
+                    <span>·</span>
+                    <span>{formatTime(article.published_at)}</span>
+                    <ExternalLink className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
                   </div>
-                </a>
-              ))}
-            </div>
+                </div>
+              </a>
+            ))}
+          </div>
 
-            {/* AI 总结按钮（预留） */}
-            <div className="flex justify-center mb-4">
+          {/* 底部栏：日期 | AI总结 | 查看全部 */}
+          <div className="grid grid-cols-3 items-center py-4 border-t border-border/40">
+            <span className="text-sm text-muted-foreground text-left">
+              {dateStr} {weekday}
+            </span>
+            <div className="flex justify-center">
               <button
                 onClick={() => alert('AI 总结功能即将上线')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border bg-secondary/50 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
               >
-                <Sparkles className="h-4 w-4" />
+                <Sparkles className="h-3.5 w-3.5" />
                 AI 总结今日资讯
               </button>
             </div>
-          </>
-        )}
-
-        {/* 底部导航 */}
-        <div className="text-center">
-          <Link
-            href="/news"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            查看全部资讯
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </div>
+            <div className="flex justify-end">
+              <Link
+                href="/news"
+                className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                查看全部资讯
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
