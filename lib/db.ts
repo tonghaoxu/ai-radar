@@ -295,6 +295,20 @@ export function getArticleCount(options: { category?: string; sourceId?: string;
   return (db.prepare(sql).get(...params) as any).count;
 }
 
+export function getDistinctSourceCount(options: { date?: string } = {}) {
+  const db = getDb();
+  const { date } = options;
+  let sql = 'SELECT COUNT(DISTINCT source_id) as count FROM articles WHERE 1=1';
+  const params: any[] = [];
+
+  if (date) {
+    sql += ' AND date(published_at) = ?';
+    params.push(date);
+  }
+
+  return (db.prepare(sql).get(...params) as any).count;
+}
+
 // ============ Sources CRUD ============
 
 export function getSources(type?: string) {

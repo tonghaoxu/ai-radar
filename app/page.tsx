@@ -36,8 +36,8 @@ export default function HomePage() {
           setArticles(list);
           setTotal(data.total || list.length);
         }
-        if (data.sources) {
-          setSourceCount(data.sources.filter((s: { type: string }) => s.type === 'news').length);
+        if (data.sourceCount !== null && data.sourceCount !== undefined) {
+          setSourceCount(data.sourceCount);
         }
       } catch (err) {
         console.error('获取文章失败:', err);
@@ -67,10 +67,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
-      <div className="flex-1 max-w-2xl mx-auto px-6 py-6 w-full">
+      <div className="flex-1 max-w-2xl mx-auto px-6 py-8 w-full">
         {/* 顶部：日期和统计 */}
-        <div className="mb-4">
-          <h1 className="text-3xl font-bold tracking-tight mb-2">AI Radar</h1>
+        <div className="mb-6">
           <p className="text-muted-foreground">
             {dateStr} {weekday} · 今日 {total} 篇 · {sourceCount} 个来源
           </p>
@@ -94,7 +93,7 @@ export default function HomePage() {
         ) : (
           <>
             {/* 五张卡片 */}
-            <div className="space-y-2 mb-6">
+            <div className="space-y-3 mb-6">
               {top5.map((article) => (
                 <a
                   key={article.id}

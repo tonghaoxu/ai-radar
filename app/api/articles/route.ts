@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getArticles, getArticleById, getArticleCount, getSources, markArticleRead, markArticleStarred } from '@/lib/db';
+import { getArticles, getArticleById, getArticleCount, getSources, getDistinctSourceCount, markArticleRead, markArticleStarred } from '@/lib/db';
 import { crawlAll } from '@/lib/crawler';
 
 export async function GET(request: NextRequest) {
@@ -29,13 +29,14 @@ export async function GET(request: NextRequest) {
   const offset = parseInt(searchParams.get('offset') || '0');
 
   try {
-    const [articles, total, sources] = await Promise.all([
+    const [articles, total, sources, sourceCount] = await Promise.all([
       Promise.resolve(getArticles({ category, sourceId, language, isStarred, search, date, limit, offset })),
       Promise.resolve(getArticleCount({ category, sourceId, date })),
       Promise.resolve(getSources()),
+      Promise.resolve(date ? getDistinctSourceCount({ date }) : null),
     ]);
 
-    return NextResponse.json({ articles, total, sources });
+    return NextResponse.json({ articles, total, sources, sourceCount });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
