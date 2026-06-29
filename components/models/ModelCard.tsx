@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ModelBenchmark {
   benchmark_name: string;
@@ -105,8 +106,19 @@ export function ModelCard({ model }: ModelCardProps) {
           </div>
         )}
 
-        {/* 描述 */}
-        <p className="text-xs text-muted-foreground line-clamp-2">{model.description}</p>
+        {/* 描述 — 2行截断 + hover tooltip */}
+        {model.description && (
+          <Tooltip>
+            <TooltipTrigger>
+              <p className="text-xs text-muted-foreground line-clamp-2 cursor-default text-left">
+                {model.description}
+              </p>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="max-w-[320px] text-xs leading-relaxed">
+              {model.description}
+            </TooltipContent>
+          </Tooltip>
+        )}
       </CardContent>
     </Card>
   );
