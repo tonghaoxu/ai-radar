@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Loader2, Sparkles, ExternalLink, ArrowRight } from 'lucide-react';
 
-const CRAWL_INTERVAL = 30 * 60 * 1000;
+const CRAWL_INTERVAL = 10 * 60 * 1000;
 const SESSION_KEY = 'ai-radar-last-crawl-check';
 
 interface Article {
@@ -36,7 +36,7 @@ export default function HomePage() {
           if (lastArticle?.crawled_at) {
             const lastCrawl = new Date(lastArticle.crawled_at).getTime();
             if (Date.now() - lastCrawl > CRAWL_INTERVAL) {
-              console.log('[首页] 距上次抓取超过30分钟，自动触发');
+              console.log('[首页] 距上次抓取超过10分钟，自动触发');
               sessionStorage.setItem(SESSION_KEY, String(Date.now()));
               await fetch('/api/articles', {
                 method: 'POST',

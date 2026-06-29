@@ -64,6 +64,19 @@ export const ARXIV_CATEGORY_NAMES: Record<string, string> = {
   // Quantitative Biology
   'q-bio.NC': 'Neurons and Cognition',
   'q-bio.QM': 'Quantitative Methods',
+
+  // Physics
+  'astro-ph.IM': 'Instrumentation and Methods for Astrophysics',
+  'cond-mat.dis-nn': 'Disordered Systems and Neural Networks',
+  'cond-mat.mes-hall': 'Mesoscale and Nanoscale Physics',
+  'cond-mat.mtrl-sci': 'Materials Science',
+  'nucl-th': 'Nuclear Theory',
+  'quant-ph': 'Quantum Physics',
+  'physics.comp-ph': 'Computational Physics',
+  'physics.data-an': 'Data Analysis, Statistics and Probability',
+
+  // Electrical Engineering (more)
+  'eess.SY': 'Systems and Control',
 };
 
 /** 获取分类全称，未知则返回缩写本身 */

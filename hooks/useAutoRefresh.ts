@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-const CRAWL_INTERVAL = 30 * 60 * 1000;   // 30分钟自动全量抓取
+const CRAWL_INTERVAL = 10 * 60 * 1000;   // 10分钟自动全量抓取
 const SESSION_KEY = 'ai-radar-last-crawl-check';
 
 interface UseAutoRefreshOptions {
@@ -15,11 +15,11 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
   const [autoCrawl, setAutoCrawl] = useState(true);
   const [crawling, setCrawling] = useState(false);
 
-  // 页面加载时自动检查是否需要抓取（sessionStorage 防重，30分钟内不重复检查）
+  // 页面加载时自动检查是否需要抓取（sessionStorage 防重，10分钟内不重复检查）
   useEffect(() => {
     const lastCheck = sessionStorage.getItem(SESSION_KEY);
     if (lastCheck && Date.now() - parseInt(lastCheck) < CRAWL_INTERVAL) {
-      return; // 30分钟内已检查过，跳过
+      return; // 10分钟内已检查过，跳过
     }
 
     async function checkAndCrawl() {
@@ -31,7 +31,7 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
           const lastCrawl = new Date(lastArticle.crawled_at).getTime();
           const now = Date.now();
           if (now - lastCrawl > CRAWL_INTERVAL) {
-            console.log('[自动] 距上次抓取超过30分钟，自动触发');
+            console.log('[自动] 距上次抓取超过10分钟，自动触发');
             sessionStorage.setItem(SESSION_KEY, String(Date.now()));
             const done = await doCrawl();
             if (done) await onFetch();

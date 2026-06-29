@@ -117,8 +117,8 @@ export default function ProductsPage() {
                   {product.description}
                 </p>
                 <div className="space-y-1 text-xs text-muted-foreground">
-                  {product.pricing_model && <p>💰 {product.pricing_model}</p>}
-                  {product.based_model && <p>🧠 模型: {product.based_model}</p>}
+                  {product.pricing_model && <p>{product.pricing_model}</p>}
+                  {product.based_model && <p>模型: {product.based_model}</p>}
                 </div>
                 <a
                   href={product.url}

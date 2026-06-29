@@ -244,7 +244,6 @@ export function upsertArticle(article: {
       summary = @summary,
       content_snippet = @content_snippet,
       author = @author,
-      published_at = @published_at,
       category = @category,
       language = @language,
       crawled_at = datetime('now')

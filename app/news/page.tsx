@@ -81,24 +81,33 @@ export default function NewsPage() {
   const { lastCrawlTime, autoCrawl, crawling, setAutoCrawl, getTimeAgo } =
     useAutoRefresh({ onFetch: fetchArticles, onCrawl: handleCrawl });
 
+  const [manualCrawling, setManualCrawling] = useState(false);
+
   const handleManualCrawl = async () => {
-    const res = await fetch('/api/articles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'crawl' }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      const total = data.results.reduce((s: number, r: { count: number }) => s + r.count, 0);
-      const sourceDetails = data.results
-        .filter((r: { count: number }) => r.count > 0)
-        .map((r: { source: string; type: string; count: number }) =>
-          `  ${r.source}: ${r.count} 条`)
-        .join('\n');
-      const emptySources = data.results.filter((r: { count: number }) => r.count === 0).length;
-      const msg = `抓取完成！共 ${total} 条内容\n\n${sourceDetails}${emptySources > 0 ? `\n\n${emptySources} 个源无新数据` : ''}`;
-      alert(msg);
-      fetchArticles();
+    setManualCrawling(true);
+    try {
+      const res = await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'crawl' }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const total = data.results.reduce((s: number, r: { count: number }) => s + r.count, 0);
+        const sourceDetails = data.results
+          .filter((r: { count: number }) => r.count > 0)
+          .map((r: { source: string; type: string; count: number }) =>
+            `  ${r.source}: ${r.count} 条`)
+          .join('\n');
+        const emptySources = data.results.filter((r: { count: number }) => r.count === 0).length;
+        const msg = `抓取完成！共 ${total} 条内容\n\n${sourceDetails}${emptySources > 0 ? `\n\n${emptySources} 个源无新数据` : ''}`;
+        alert(msg);
+        fetchArticles();
+      }
+    } catch (err) {
+      console.error('手动抓取失败:', err);
+    } finally {
+      setManualCrawling(false);
     }
   };
 
@@ -135,7 +144,7 @@ export default function NewsPage() {
                 ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300'
                 : 'bg-secondary text-muted-foreground'
             }`}
-            title={autoCrawl ? '自动抓取已开启（每30分钟）' : '自动抓取已关闭'}
+            title={autoCrawl ? '自动抓取已开启（每10分钟）' : '自动抓取已关闭'}
           >
             {autoCrawl ? '自动刷新 ON' : '自动刷新 OFF'}
           </button>
@@ -150,9 +159,9 @@ export default function NewsPage() {
             variant="outline"
             size="sm"
             onClick={handleManualCrawl}
-            disabled={crawling}
+            disabled={crawling || manualCrawling}
           >
-            {crawling ? (
+            {crawling || manualCrawling ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
             ) : (
               <RefreshCw className="h-4 w-4 mr-1" />
@@ -206,8 +215,8 @@ export default function NewsPage() {
         <div className="text-center py-20 text-muted-foreground">
           <p className="text-lg mb-2">还没有文章</p>
           <p className="text-sm mb-4">点击「刷新」按钮开始抓取AI资讯</p>
-          <Button onClick={handleManualCrawl} disabled={crawling}>
-            {crawling ? '抓取中...' : '开始抓取'}
+          <Button onClick={handleManualCrawl} disabled={crawling || manualCrawling}>
+            {crawling || manualCrawling ? '抓取中...' : '开始抓取'}
           </Button>
         </div>
       ) : (

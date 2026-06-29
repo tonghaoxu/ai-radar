@@ -13,9 +13,9 @@ import { Moon, Sun } from 'lucide-react';
 const navItems = [
   { href: '/', label: '首页' },
   { href: '/news', label: '资讯流' },
-  { href: '/models', label: '模型追踪' },
   { href: '/papers', label: '论文' },
   { href: '/products', label: 'AI产品' },
+  { href: '/models', label: '模型追踪' },
 ];
 
 export function Navbar() {
