@@ -2,6 +2,7 @@ import { crawlAllRss } from './rss';
 import { crawlAllArxiv } from './arxiv';
 import { crawlHackerNews } from './hackernews';
 import { crawlAllWeb } from './web';
+import { crawlGitHubTrending } from './github';
 import { fetchOpenRouterModels } from './models';
 
 export interface CrawlResult {
@@ -17,12 +18,13 @@ export async function crawlAll(): Promise<CrawlResult[]> {
 
   console.log('🚀 开始全量数据抓取...\n');
 
-  // 并行抓取：RSS + 网页 + arXiv + HN + 模型
-  const [rssResults, webResults, arxivCount, hnCount, modelCount] = await Promise.all([
+  // 并行抓取：RSS + 网页 + arXiv + HN + GitHub + 模型
+  const [rssResults, webResults, arxivCount, hnCount, githubCount, modelCount] = await Promise.all([
     crawlAllRss(),
     crawlAllWeb(),
     crawlAllArxiv(),
     crawlHackerNews(50),
+    crawlGitHubTrending(),
     fetchOpenRouterModels(),
   ]);
 
@@ -41,6 +43,9 @@ export async function crawlAll(): Promise<CrawlResult[]> {
 
   // HackerNews 结果
   results.push({ source: 'HackerNews', type: 'community', count: hnCount });
+
+  // GitHub Trending 结果
+  results.push({ source: 'GitHub Trending', type: 'opensource', count: githubCount });
 
   // OpenRouter 模型数据
   results.push({ source: 'OpenRouter', type: 'model', count: modelCount });
