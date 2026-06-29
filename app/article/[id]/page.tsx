@@ -64,7 +64,7 @@ export default function ArticleDetailPage() {
       <div className="container px-4 py-20 text-center max-w-3xl mx-auto">
         <p className="text-4xl mb-4">📄</p>
         <p className="text-lg mb-4">文章未找到</p>
-        <Link href="/">
+        <Link href="/news">
           <Button variant="outline">
             <ArrowLeft className="h-4 w-4 mr-1" />
             返回资讯流
@@ -88,7 +88,7 @@ export default function ArticleDetailPage() {
   return (
     <div className="container px-4 py-6 max-w-3xl mx-auto">
       {/* Back */}
-      <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
+      <Link href="/news" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
         <ArrowLeft className="h-4 w-4 mr-1" />
         返回资讯流
       </Link>

@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Loader2, Sparkles, ExternalLink, ArrowRight } from 'lucide-react';
 
+const CRAWL_INTERVAL = 30 * 60 * 1000;
+const SESSION_KEY = 'ai-radar-last-crawl-check';
+
 interface Article {
   id: string;
   title: string;
@@ -20,13 +23,39 @@ export default function HomePage() {
   const [sourceCount, setSourceCount] = useState(0);
 
   useEffect(() => {
-    async function fetchToday() {
+    async function init() {
+      const lastCheck = sessionStorage.getItem(SESSION_KEY);
+      const shouldCheck = !lastCheck || Date.now() - parseInt(lastCheck) > CRAWL_INTERVAL;
+
+      // 检查是否需要自动抓取（与资讯流共享 sessionStorage 防重）
+      if (shouldCheck) {
+        try {
+          const res = await fetch('/api/articles?limit=1');
+          const data = await res.json();
+          const lastArticle = data.articles?.[0];
+          if (lastArticle?.crawled_at) {
+            const lastCrawl = new Date(lastArticle.crawled_at).getTime();
+            if (Date.now() - lastCrawl > CRAWL_INTERVAL) {
+              console.log('[首页] 距上次抓取超过30分钟，自动触发');
+              sessionStorage.setItem(SESSION_KEY, String(Date.now()));
+              await fetch('/api/articles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'crawl' }),
+              });
+            } else {
+              sessionStorage.setItem(SESSION_KEY, String(Date.now()));
+            }
+          }
+        } catch {}
+      }
+
+      // 获取今日文章
       const today = new Date().toISOString().substring(0, 10);
       try {
         const res = await fetch(`/api/articles?date=${today}&limit=20`);
         const data = await res.json();
         if (data.articles) {
-          // 当天不够时，取最新的补齐
           let list = data.articles;
           if (list.length < 5) {
             const fallbackRes = await fetch('/api/articles?limit=20');
@@ -44,7 +73,7 @@ export default function HomePage() {
       }
       setLoading(false);
     }
-    fetchToday();
+    init();
   }, []);
 
   const today = new Date();
