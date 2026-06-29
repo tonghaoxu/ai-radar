@@ -451,11 +451,13 @@ export function upsertPaper(paper: {
   const stmt = db.prepare(`
     INSERT INTO papers (id, arxiv_id, title, authors, abstract, categories, primary_category, published_at, pdf_url, code_url, crawled_at)
     VALUES (@id, @arxiv_id, @title, @authors, @abstract, @categories, @primary_category, @published_at, @pdf_url, @code_url, datetime('now'))
-    ON CONFLICT(id) DO UPDATE SET
+    ON CONFLICT(arxiv_id) DO UPDATE SET
       title = @title,
       authors = @authors,
       abstract = @abstract,
       categories = @categories,
+      primary_category = @primary_category,
+      published_at = @published_at,
       crawled_at = datetime('now')
   `);
   return stmt.run({

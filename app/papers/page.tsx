@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react';
 import { PaperCard } from '@/components/papers/PaperCard';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import { Loader2, RefreshCw } from 'lucide-react';
+import { getCategoryFullName } from '@/lib/arxiv-categories';
 
 interface Paper {
   id: string;
@@ -101,30 +103,46 @@ export default function PapersPage() {
       <Separator className="mb-4" />
 
       {/* Category Filter */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {PAPER_CATEGORIES.map((cat) => (
-          <Button
-            key={cat}
-            variant={selectedCategory === cat ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedCategory(cat)}
-          >
-            {cat}
-          </Button>
-        ))}
-        {categories
-          .filter((c) => !PAPER_CATEGORIES.includes(c))
-          .map((cat) => (
-            <Button
-              key={cat}
-              variant={selectedCategory === cat ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat}
-            </Button>
+      <TooltipProvider delay={1500}>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {PAPER_CATEGORIES.map((cat) => (
+            <Tooltip key={cat}>
+              <TooltipTrigger>
+                <Button
+                  variant={selectedCategory === cat ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setSelectedCategory(cat)}
+                >
+                  {cat}
+                </Button>
+              </TooltipTrigger>
+              {cat !== '全部' && (
+                <TooltipContent side="top" className="text-xs">
+                  {getCategoryFullName(cat)}
+                </TooltipContent>
+              )}
+            </Tooltip>
           ))}
-      </div>
+          {categories
+            .filter((c) => !PAPER_CATEGORIES.includes(c))
+            .map((cat) => (
+              <Tooltip key={cat}>
+                <TooltipTrigger>
+                  <Button
+                    variant={selectedCategory === cat ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSelectedCategory(cat)}
+                  >
+                    {cat}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  {getCategoryFullName(cat)}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+        </div>
+      </TooltipProvider>
 
       {/* Paper List */}
       {loading ? (

@@ -49,36 +49,41 @@ export async function fetchArxivPapers(options: {
     let count = 0;
 
     for (const entry of entries) {
-      const paperId = uuidv4();
-      const arxivId = entry.id.replace('http://arxiv.org/abs/', '').trim();
+      try {
+        const paperId = uuidv4();
+        const arxivId = entry.id.replace('http://arxiv.org/abs/', '').trim();
+        if (!arxivId) continue;
 
-      // 存为 paper 记录
-      upsertPaper({
-        id: paperId,
-        arxiv_id: arxivId,
-        title: entry.title,
-        authors: entry.author?.map((a: any) => a.name).join(', ') || '',
-        abstract: entry.summary?.substring(0, 2000) || '',
-        categories: entry.category?.map((c: any) => c.term).join(',') || '',
-        primary_category: entry.primary_category?.term || category,
-        published_at: entry.published,
-        pdf_url: `https://arxiv.org/pdf/${arxivId}`,
-      });
+        // 存为 paper 记录
+        upsertPaper({
+          id: paperId,
+          arxiv_id: arxivId,
+          title: entry.title,
+          authors: entry.author?.map((a: any) => a.name).join(', ') || '',
+          abstract: entry.summary?.substring(0, 2000) || '',
+          categories: entry.category?.map((c: any) => c.term).join(',') || '',
+          primary_category: entry.primary_category?.term || category,
+          published_at: entry.published,
+          pdf_url: `https://arxiv.org/pdf/${arxivId}`,
+        });
 
-      // 同时存为 article（统一信息流）
-      upsertArticle({
-        id: uuidv4(),
-        source_id: 'arxiv',
-        title: `[论文] ${entry.title}`,
-        url: entry.link || `https://arxiv.org/abs/${arxivId}`,
-        summary: entry.summary?.substring(0, 500) || '',
-        author: entry.author?.map((a: any) => a.name).slice(0, 3).join(', ') || '',
-        published_at: entry.published,
-        category: '学术研究',
-        language: 'en',
-      });
+        // 同时存为 article（统一信息流）
+        upsertArticle({
+          id: uuidv4(),
+          source_id: 'arxiv',
+          title: `[论文] ${entry.title}`,
+          url: entry.link || `https://arxiv.org/abs/${arxivId}`,
+          summary: entry.summary?.substring(0, 500) || '',
+          author: entry.author?.map((a: any) => a.name).slice(0, 3).join(', ') || '',
+          published_at: entry.published,
+          category: '学术研究',
+          language: 'en',
+        });
 
-      count++;
+        count++;
+      } catch {
+        // 单篇失败跳过，继续处理下一篇
+      }
     }
 
     console.log(`[arXiv] ${category}: ${count} 篇论文`);
