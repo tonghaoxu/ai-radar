@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { ArticleCard } from '@/components/news/ArticleCard';
 import { CategoryFilter } from '@/components/news/CategoryFilter';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2, X } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface Article {
@@ -30,6 +31,8 @@ interface Source {
 }
 
 export default function NewsPage() {
+  const searchParams = useSearchParams();
+  const urlSearch = searchParams.get('search') || '';
   const [articles, setArticles] = useState<Article[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [total, setTotal] = useState(0);
@@ -37,6 +40,7 @@ export default function NewsPage() {
   const [category, setCategory] = useState('全部');
   const [sourceId, setSourceId] = useState('');
   const [showStarred, setShowStarred] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(urlSearch);
 
   const fetchArticles = useCallback(async () => {
     setLoading(true);
@@ -45,6 +49,7 @@ export default function NewsPage() {
       if (category !== '全部') params.set('category', category);
       if (sourceId) params.set('sourceId', sourceId);
       if (showStarred) params.set('isStarred', 'true');
+      if (searchQuery) params.set('search', searchQuery);
       params.set('limit', '100');
 
       const res = await fetch(`/api/articles?${params}`);
@@ -60,7 +65,12 @@ export default function NewsPage() {
       console.error('获取文章失败:', err);
     }
     setLoading(false);
-  }, [category, sourceId, showStarred]);
+  }, [category, sourceId, showStarred, searchQuery]);
+
+  // 同步 URL search 参数到状态
+  useEffect(() => {
+    setSearchQuery(urlSearch);
+  }, [urlSearch]);
 
   useEffect(() => {
     fetchArticles();
@@ -172,6 +182,22 @@ export default function NewsPage() {
       </div>
 
       <Separator className="mb-4" />
+
+      {/* 搜索状态提示 */}
+      {searchQuery && (
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20">
+          <span className="text-sm text-muted-foreground">
+            搜索「<span className="text-foreground font-medium">{searchQuery}</span>」的结果
+          </span>
+          <button
+            onClick={() => setSearchQuery('')}
+            className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+            清除
+          </button>
+        </div>
+      )}
 
       <div className="mb-4">
         <CategoryFilter selected={category} onSelect={setCategory} />

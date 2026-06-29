@@ -141,6 +141,30 @@ function initTables(db: Database.Database) {
       content_rowid='rowid'
     );
 
+    -- FTS5 同步触发器：articles
+    CREATE TRIGGER IF NOT EXISTS articles_fts_ai AFTER INSERT ON articles BEGIN
+      INSERT INTO articles_fts(rowid, title, summary) VALUES (new.rowid, new.title, new.summary);
+    END;
+    CREATE TRIGGER IF NOT EXISTS articles_fts_ad AFTER DELETE ON articles BEGIN
+      INSERT INTO articles_fts(articles_fts, rowid, title, summary) VALUES('delete', old.rowid, old.title, old.summary);
+    END;
+    CREATE TRIGGER IF NOT EXISTS articles_fts_au AFTER UPDATE ON articles BEGIN
+      INSERT INTO articles_fts(articles_fts, rowid, title, summary) VALUES('delete', old.rowid, old.title, old.summary);
+      INSERT INTO articles_fts(rowid, title, summary) VALUES (new.rowid, new.title, new.summary);
+    END;
+
+    -- FTS5 同步触发器：papers
+    CREATE TRIGGER IF NOT EXISTS papers_fts_ai AFTER INSERT ON papers BEGIN
+      INSERT INTO papers_fts(rowid, title, abstract) VALUES (new.rowid, new.title, new.abstract);
+    END;
+    CREATE TRIGGER IF NOT EXISTS papers_fts_ad AFTER DELETE ON papers BEGIN
+      INSERT INTO papers_fts(papers_fts, rowid, title, abstract) VALUES('delete', old.rowid, old.title, old.abstract);
+    END;
+    CREATE TRIGGER IF NOT EXISTS papers_fts_au AFTER UPDATE ON papers BEGIN
+      INSERT INTO papers_fts(papers_fts, rowid, title, abstract) VALUES('delete', old.rowid, old.title, old.abstract);
+      INSERT INTO papers_fts(rowid, title, abstract) VALUES (new.rowid, new.title, new.abstract);
+    END;
+
     -- 文章索引
     CREATE INDEX IF NOT EXISTS idx_articles_published ON articles(published_at DESC);
     CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category);
@@ -155,6 +179,14 @@ function initTables(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
     CREATE INDEX IF NOT EXISTS idx_models_open_source ON models(is_open_source);
   `);
+
+  // 重建 FTS 索引（确保已有数据和新增触发器同步）
+  try {
+    db.prepare("INSERT INTO articles_fts(articles_fts) VALUES('rebuild')").run();
+    db.prepare("INSERT INTO papers_fts(papers_fts) VALUES('rebuild')").run();
+  } catch {
+    // 首次创建时 FTS 表可能为空，忽略
+  }
 }
 
 // ============ Articles CRUD ============
@@ -173,15 +205,15 @@ export function getArticles(options: {
   const { category, sourceId, language, isStarred, search, date, limit = 50, offset = 0 } = options;
 
   if (search) {
+    const like = `%${search}%`;
     return db.prepare(`
       SELECT a.*, s.name as source_name
       FROM articles a
-      JOIN articles_fts fts ON a.rowid = fts.rowid
       LEFT JOIN sources s ON a.source_id = s.id
-      WHERE articles_fts MATCH ?
-      ORDER BY rank
+      WHERE a.title LIKE ? OR a.summary LIKE ?
+      ORDER BY a.published_at DESC
       LIMIT ? OFFSET ?
-    `).all(search, limit, offset);
+    `).all(like, like, limit, offset);
   }
 
   let sql = 'SELECT a.*, s.name as source_name FROM articles a LEFT JOIN sources s ON a.source_id = s.id WHERE 1=1';
@@ -408,13 +440,13 @@ export function getPapers(options: {
   const { category, search, isFeatured, limit = 50, offset = 0 } = options;
 
   if (search) {
+    const like = `%${search}%`;
     return db.prepare(`
-      SELECT p.* FROM papers p
-      JOIN papers_fts fts ON p.rowid = fts.rowid
-      WHERE papers_fts MATCH ?
-      ORDER BY rank
+      SELECT * FROM papers
+      WHERE title LIKE ? OR abstract LIKE ?
+      ORDER BY published_at DESC
       LIMIT ? OFFSET ?
-    `).all(search, limit, offset);
+    `).all(like, like, limit, offset);
   }
 
   let sql = 'SELECT * FROM papers WHERE 1=1';
@@ -514,24 +546,23 @@ export function getProductCategories() {
 
 export function searchAll(query: string) {
   const db = getDb();
+  const like = `%${query}%`;
   const articles = db.prepare(`
     SELECT a.*, s.name as source_name, 'article' as result_type
     FROM articles a
-    JOIN articles_fts fts ON a.rowid = fts.rowid
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE articles_fts MATCH ?
-    ORDER BY rank
+    WHERE a.title LIKE ? OR a.summary LIKE ?
+    ORDER BY a.published_at DESC
     LIMIT 20
-  `).all(query);
+  `).all(like, like);
 
   const papers = db.prepare(`
     SELECT p.*, 'paper' as result_type
     FROM papers p
-    JOIN papers_fts fts ON p.rowid = fts.rowid
-    WHERE papers_fts MATCH ?
-    ORDER BY rank
+    WHERE p.title LIKE ? OR p.abstract LIKE ?
+    ORDER BY p.published_at DESC
     LIMIT 20
-  `).all(query);
+  `).all(like, like);
 
   return { articles, papers };
 }

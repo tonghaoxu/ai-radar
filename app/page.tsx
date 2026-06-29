@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Loader2, Sparkles, ExternalLink, ArrowRight } from 'lucide-react';
+import { Loader2, ExternalLink, ArrowRight, ArrowDownUp } from 'lucide-react';
 
 const CRAWL_INTERVAL = 10 * 60 * 1000;
 const SESSION_KEY = 'ai-radar-last-crawl-check';
@@ -21,6 +21,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
   const [sourceCount, setSourceCount] = useState(0);
+  const [showNextFive, setShowNextFive] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -91,8 +92,9 @@ export default function HomePage() {
     return d.toISOString().substring(0, 10);
   };
 
-  // 取前 5 条展示
-  const top5 = articles.slice(0, 5);
+  // 取前 5 条或 6-10 条展示
+  const displayedArticles = showNextFive ? articles.slice(5, 10) : articles.slice(0, 5);
+  const hasMorePages = articles.length > 5;
 
   return (
     <div className="max-w-2xl mx-auto px-6 h-[calc(100vh-3.5rem)] flex flex-col">
@@ -101,7 +103,7 @@ export default function HomePage() {
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : top5.length === 0 ? (
+      ) : displayedArticles.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
           <p className="mb-4">暂无今日资讯</p>
           <Link
@@ -115,7 +117,7 @@ export default function HomePage() {
         <>
           {/* 五张卡片 — 垂直居中 */}
           <div className="flex-1 flex flex-col justify-center space-y-3">
-            {top5.map((article) => (
+            {displayedArticles.map((article) => (
               <a
                 key={article.id}
                 href={article.url}
@@ -147,13 +149,15 @@ export default function HomePage() {
               {dateStr} {weekday}
             </span>
             <div className="flex justify-center">
-              <button
-                onClick={() => alert('AI 总结功能即将上线')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border bg-secondary/50 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                AI 总结今日资讯
-              </button>
+              {hasMorePages && (
+                <button
+                  onClick={() => setShowNextFive(!showNextFive)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border bg-secondary/50 text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                >
+                  <ArrowDownUp className="h-3.5 w-3.5" />
+                  {showNextFive ? '返回前 5 条' : '查看 6~10 条'}
+                </button>
+              )}
             </div>
             <div className="flex justify-end">
               <Link
