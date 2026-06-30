@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArticleCard } from '@/components/news/ArticleCard';
 import { CategoryFilter } from '@/components/news/CategoryFilter';
@@ -30,7 +30,7 @@ interface Source {
   type: string;
 }
 
-export default function NewsPage() {
+function NewsPageContent() {
   const searchParams = useSearchParams();
   const urlSearch = searchParams.get('search') || '';
   const [articles, setArticles] = useState<Article[]>([]);
@@ -253,5 +253,17 @@ export default function NewsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NewsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <NewsPageContent />
+    </Suspense>
   );
 }

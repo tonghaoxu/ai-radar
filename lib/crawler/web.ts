@@ -85,7 +85,7 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
           url: link,
           summary: summary.substring(0, 500) || title,
           author: '',
-          published_at: parseChineseTime(timeText) || new Date().toISOString(),
+          published_at: parseChineseTime(timeText || '') || new Date().toISOString(),
           category: inferCategory(title),
           language: 'zh',
         });
