@@ -41,8 +41,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/你的用户名/ai-news-hub.git
-cd ai-news-hub
+git clone https://github.com/tonghaoxu/ai-radar.git
+cd ai-radar
 
 # 安装依赖
 npm install
