@@ -14,9 +14,9 @@
 
 ## 截图
 
-| 暗色模式 | 亮色模式 |
+| 亮色模式 | 暗色模式 |
 |---------|---------|
-| [![首页暗色](public/screenshots/home-dark.png)](public/screenshots/home-dark.png) | [![首页亮色](public/screenshots/home-light.png)](public/screenshots/home-light.png) |
+| [![首页亮色](public/screenshots/home-light.png)](public/screenshots/home-light.png) | [![首页暗色](public/screenshots/home-dark.png)](public/screenshots/home-dark.png) |
 
 <details>
 <summary>更多页面截图</summary>
