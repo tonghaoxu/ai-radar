@@ -5,7 +5,31 @@
 > 本项目仅供个人学习、研究使用。未经授权不得用于商业用途。
 > 所有资讯内容版权归各信息源所有，本平台仅做聚合索引与链接，不存储完整文章内容。
 
-一站式 AI 资讯聚合：多源新闻抓取、arXiv 论文追踪、AI 模型数据库、AI 产品目录，支持中英文搜索和暗色模式，内置 AI 每日资讯总结。
+一站式 AI 资讯聚合，多源新闻抓取、arXiv 论文追踪、AI 模型数据库、AI 产品目录。支持中英文搜索和暗色模式，内置 AI 每日资讯总结。
+
+## 设计理念
+
+大多数新闻聚合网站信息过载，用户打开后不知道该看什么。AI Radar 遵循 **less is more**：
+首页只展示当天最新 5 条资讯，视觉聚焦，一目了然。有需要再看完整资讯流。
+
+## 截图
+
+| 暗色模式 | 亮色模式 |
+|---------|---------|
+| [![首页暗色](public/screenshots/home-dark.png)](public/screenshots/home-dark.png) | [![首页亮色](public/screenshots/home-light.png)](public/screenshots/home-light.png) |
+
+<details>
+<summary>更多页面截图</summary>
+
+| 资讯流 | 论文追踪 |
+|-------|---------|
+| [![资讯流](public/screenshots/news-feed.png)](public/screenshots/news-feed.png) | [![论文](public/screenshots/papers.png)](public/screenshots/papers.png) |
+
+| 模型追踪 | 产品目录 |
+|---------|---------|
+| [![模型](public/screenshots/models.png)](public/screenshots/models.png) | [![产品](public/screenshots/products.png)](public/screenshots/products.png) |
+
+</details>
 
 ## 功能
 
