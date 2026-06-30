@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
+import { validateApiKey } from '@/lib/auth';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_MODEL = 'deepseek-chat';
@@ -62,6 +63,10 @@ async function fetchArticleText(url: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
+  // 验证 API Key（如果设置了 CRON_SECRET）
+  const { authorized, response } = validateApiKey(request);
+  if (!authorized) return response;
+
   try {
     const body = await request.json();
     const articles: ArticleInput[] = body.articles || [];

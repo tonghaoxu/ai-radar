@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getArticles, getArticleById, getArticleCount, getSources, getDistinctSourceCount, markArticleRead, markArticleStarred } from '@/lib/db';
 import { crawlAll } from '@/lib/crawler';
+import { validateApiKey } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -46,8 +47,11 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    // 手动触发数据抓取
+    // 手动触发数据抓取（需要验证）
     if (body.action === 'crawl') {
+      const { authorized, response } = validateApiKey(request);
+      if (!authorized) return response;
+
       const results = await crawlAll();
       return NextResponse.json({ success: true, results });
     }
