@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, ExternalLink, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -64,11 +65,12 @@ export default function ArticleDetailPage() {
       <div className="container px-4 py-20 text-center max-w-3xl mx-auto">
         <p className="text-4xl mb-4">📄</p>
         <p className="text-lg mb-4">文章未找到</p>
-        <Link href="/news">
-          <Button variant="outline">
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            返回资讯流
-          </Button>
+        <Link
+          href="/news"
+          className={cn(buttonVariants({ variant: 'outline' }))}
+        >
+          <ArrowLeft className="h-4 w-4 mr-1" />
+          返回资讯流
         </Link>
       </div>
     );
@@ -136,11 +138,14 @@ export default function ArticleDetailPage() {
           <Separator />
 
           {/* 原文链接 */}
-          <a href={article.url} target="_blank" rel="noopener noreferrer">
-            <Button className="w-full">
-              <ExternalLink className="h-4 w-4 mr-2" />
-              查看原文
-            </Button>
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground hover:bg-primary/80 h-9 px-4 py-2 w-full text-sm font-medium"
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            查看原文
           </a>
 
           <p className="text-xs text-muted-foreground text-center">

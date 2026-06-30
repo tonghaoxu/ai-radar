@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -29,7 +30,11 @@ interface ArticleCardProps {
 }
 
 export function ArticleCard({ article, onStar }: ArticleCardProps) {
-  const timeAgo = publishedAtToTimeAgo(article.published_at, article.language);
+  const [timeAgo, setTimeAgo] = useState('');
+
+  useEffect(() => {
+    setTimeAgo(publishedAtToTimeAgo(article.published_at, article.language));
+  }, [article.published_at, article.language]);
 
   return (
     <Card className={`group hover:shadow-md transition-shadow ${article.is_read ? 'opacity-60' : ''}`}>
@@ -83,11 +88,14 @@ export function ArticleCard({ article, onStar }: ArticleCardProps) {
                     }`}
                   />
                 </Button>
-                <Link href={article.url} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" size="sm" className="h-7 text-xs">
-                    原文 →
-                  </Button>
-                </Link>
+                <a
+                  href={article.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center rounded-lg border border-border bg-background hover:bg-muted h-7 px-2.5 text-xs"
+                >
+                  原文 →
+                </a>
               </div>
             </div>
           </div>

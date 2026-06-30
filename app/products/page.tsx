@@ -124,12 +124,10 @@ export default function ProductsPage() {
                   href={product.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-auto"
+                  className="mt-auto inline-flex items-center justify-center rounded-lg border border-border bg-background hover:bg-muted h-7 px-2.5 w-full mt-2 text-xs"
                 >
-                  <Button variant="outline" size="sm" className="w-full mt-2 text-xs">
-                    <ExternalLink className="h-3 w-3 mr-1" />
-                    访问
-                  </Button>
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  访问
                 </a>
               </CardContent>
             </Card>

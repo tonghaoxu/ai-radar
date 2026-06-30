@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { useState } from 'react';
 import { useTheme } from 'next-themes';
+import { cn } from '@/lib/utils';
 import { Moon, Sun } from 'lucide-react';
 
 const navItems = [
@@ -45,13 +46,17 @@ export function Navbar() {
           {/* Nav Links */}
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => (
-              <Link key={item.href} href={item.href}>
-                <Button
-                  variant={pathname === item.href ? 'secondary' : 'ghost'}
-                  size="sm"
-                >
-                  {item.label}
-                </Button>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  buttonVariants({
+                    variant: pathname === item.href ? 'secondary' : 'ghost',
+                    size: 'sm',
+                  })
+                )}
+              >
+                {item.label}
               </Link>
             ))}
           </nav>

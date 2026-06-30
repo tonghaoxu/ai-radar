@@ -56,6 +56,8 @@ export default function HomePage() {
 
       // 检查是否需要自动抓取（与资讯流共享 sessionStorage 防重）
       if (shouldCheck) {
+        // 立即占位，防止并发页面重复触发爬虫
+        sessionStorage.setItem(SESSION_KEY, String(Date.now()));
         try {
           const res = await fetch('/api/articles?limit=1');
           const data = await res.json();
@@ -64,14 +66,11 @@ export default function HomePage() {
             const lastCrawl = new Date(lastArticle.crawled_at).getTime();
             if (Date.now() - lastCrawl > CRAWL_INTERVAL) {
               console.log('[首页] 距上次抓取超过10分钟，自动触发');
-              sessionStorage.setItem(SESSION_KEY, String(Date.now()));
               await fetch('/api/articles', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action: 'crawl' }),
               });
-            } else {
-              sessionStorage.setItem(SESSION_KEY, String(Date.now()));
             }
           }
         } catch {}

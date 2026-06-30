@@ -22,6 +22,9 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
       return; // 10分钟内已检查过，跳过
     }
 
+    // 立即占位，防止首页和资讯流并发时重复触发爬虫
+    sessionStorage.setItem(SESSION_KEY, String(Date.now()));
+
     async function checkAndCrawl() {
       try {
         const res = await fetch('/api/articles?limit=1');
@@ -32,12 +35,8 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
           const now = Date.now();
           if (now - lastCrawl > CRAWL_INTERVAL) {
             console.log('[自动] 距上次抓取超过10分钟，自动触发');
-            sessionStorage.setItem(SESSION_KEY, String(Date.now()));
             const done = await doCrawl();
             if (done) await onFetch();
-          } else {
-            // 数据库已是最新，也记录本次检查时间，避免短时间重复请求
-            sessionStorage.setItem(SESSION_KEY, String(Date.now()));
           }
         }
       } catch {
