@@ -17,6 +17,16 @@ interface Article {
   published_at: string;
 }
 
+/** 格式化发布时间为相对时间 */
+function formatTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  return d.toISOString().substring(0, 10);
+}
+
 export default function HomePage() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,16 +116,6 @@ export default function HomePage() {
   const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   const weekday = weekdays[today.getDay()];
-
-  const formatTime = (iso?: string) => {
-    if (!iso) return '';
-    const d = new Date(iso);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-    return d.toISOString().substring(0, 10);
-  };
 
   // 取前 10 条用于总结，前 5 条用于展示
   const topArticles = articles.slice(0, 5);

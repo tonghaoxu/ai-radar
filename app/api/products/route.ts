@@ -20,6 +20,10 @@ export async function GET(request: NextRequest) {
       categories: (categories as any[]).map((c) => c.category),
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[Products]:', err);
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }

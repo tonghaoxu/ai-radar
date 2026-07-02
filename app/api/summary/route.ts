@@ -80,20 +80,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'API Key 未配置' }, { status: 500 });
     }
 
-    // 并行抓取所有文章原文（5 秒超时兜底）
+    // 分批并发抓取，每批最多 5 个，避免同时打开过多连接
     console.log(`[Summary] 开始抓取 ${articles.length} 篇文章原文...`);
-    const fetched = await Promise.all(
-      articles.map(async (a) => {
-        if (!a.url) return { ...a, content: ''};
-        const text = await fetchArticleText(a.url);
-        if (text) {
-          console.log(`[Summary] ✓ ${a.title.substring(0, 40)}... (${text.length} 字)`);
-        } else {
-          console.log(`[Summary] ✗ ${a.title.substring(0, 40)}... (抓取失败或为空)`);
-        }
-        return { ...a, content: text };
-      })
-    );
+    const CONCURRENCY = 5;
+    const fetched: (ArticleInput & { content: string })[] = [];
+    for (let i = 0; i < articles.length; i += CONCURRENCY) {
+      const batch = articles.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(
+        batch.map(async (a) => {
+          if (!a.url) return { ...a, content: '' };
+          const text = await fetchArticleText(a.url);
+          if (text) {
+            console.log(`[Summary] ✓ ${a.title.substring(0, 40)}... (${text.length} 字)`);
+          } else {
+            console.log(`[Summary] ✗ ${a.title.substring(0, 40)}... (抓取失败或为空)`);
+          }
+          return { ...a, content: text };
+        })
+      );
+      fetched.push(...batchResults);
+    }
 
     // 构建 prompt：有原文用原文，没原文用摘要兜底
     const articleList = fetched
@@ -116,7 +122,9 @@ export async function POST(request: NextRequest) {
     const userPrompt = `以下是今天最新的 AI 资讯文章，请基于内容总结核心要点：\n\n${articleList}`;
 
     console.log(`[Summary] 发送总结请求 (prompt 长度: ${userPrompt.length} 字)...`);
-    const response = await fetch(DEEPSEEK_API_URL, {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const aiResponse = await fetch(DEEPSEEK_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -131,23 +139,28 @@ export async function POST(request: NextRequest) {
         temperature: 0.7,
         max_tokens: 800,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('[Summary API] DeepSeek 调用失败:', response.status, errText);
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error('[Summary API] DeepSeek 调用失败:', aiResponse.status, errText);
       return NextResponse.json(
-        { error: `AI 调用失败: ${response.status}` },
+        { error: `AI 调用失败: ${aiResponse.status}` },
         { status: 500 }
       );
     }
 
-    const data = await response.json();
+    const data = await aiResponse.json();
     const summary = data.choices?.[0]?.message?.content || '';
 
     return NextResponse.json({ summary });
   } catch (err: any) {
     console.error('[Summary API] 异常:', err);
-    return NextResponse.json({ error: err.message || '服务器错误' }, { status: 500 });
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? (err.message || '服务器错误') : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }

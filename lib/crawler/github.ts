@@ -4,22 +4,7 @@
 import * as cheerio from 'cheerio';
 import { v4 as uuidv4 } from 'uuid';
 import { upsertArticle, updateSourceLastCrawled } from '../db';
-
-const AI_KEYWORDS = [
-  'ai', 'llm', 'gpt', 'machine-learning', 'deep-learning', 'nlp',
-  'computer-vision', 'neural', 'transformer', 'agent', 'rag',
-  'langchain', 'llama', 'openai', 'chatbot', 'embedding', 'vector',
-  'stable-diffusion', 'generative', 'text-to', 'speech', 'voice',
-  'copilot', 'inference', 'fine-tuning', 'cuda', 'ml', 'model',
-  'prompt', 'tokenizer', 'diffusion', 'mcp', 'reinforcement',
-  'robotics', 'autonomous', 'vision', 'whisper', 'tts', 'stt',
-  'artificial-intelligence', 'data-science', 'pytorch', 'tensorflow',
-];
-
-function isAiRepo(name: string, description: string): boolean {
-  const text = (name + ' ' + description).toLowerCase();
-  return AI_KEYWORDS.some(kw => text.includes(kw));
-}
+import { isAiRelated } from './keywords';
 
 export async function crawlGitHubTrending(): Promise<number> {
   try {
@@ -63,8 +48,8 @@ export async function crawlGitHubTrending(): Promise<number> {
         // 今日 stars（可选）
         const starsToday = $el.find('.float-sm-right').text().trim();
 
-        // 只收录 AI 相关仓库
-        if (!isAiRepo(repoPath, description)) return;
+        // 只收录 AI 相关仓库（复用共享关键词列表）
+        if (!isAiRelated(`${repoPath} ${description}`)) return;
 
         const title = `GitHub Trending: ${repoPath}${language ? ' [' + language + ']' : ''}${starsToday ? ' ⭐' + starsToday : ''}`;
         const url = `https://github.com/${repoPath}`;

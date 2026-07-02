@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -19,15 +20,20 @@ interface PaperCardProps {
 }
 
 export function PaperCard({ paper }: PaperCardProps) {
-  const mainCategories = (paper.categories || '')
-    .split(',')
-    .slice(0, 3)
-    .map((c) => c.trim());
+  const mainCategories = useMemo(
+    () => (paper.categories || '').split(',').slice(0, 3).map((c) => c.trim()),
+    [paper.categories]
+  );
 
-  const authorsList = (paper.authors || '')
-    .split(',')
-    .slice(0, 3)
-    .map((a) => a.trim());
+  const authorsList = useMemo(
+    () => (paper.authors || '').split(',').slice(0, 3).map((a) => a.trim()),
+    [paper.authors]
+  );
+
+  const totalAuthors = useMemo(
+    () => (paper.authors || '').split(',').length,
+    [paper.authors]
+  );
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -62,7 +68,7 @@ export function PaperCard({ paper }: PaperCardProps) {
             {authorsList.length > 0 && (
               <p className="text-sm text-muted-foreground mb-2">
                 {authorsList.join(', ')}
-                {(paper.authors || '').split(',').length > 3 ? ' et al.' : ''}
+                {totalAuthors > 3 ? ' et al.' : ''}
               </p>
             )}
 

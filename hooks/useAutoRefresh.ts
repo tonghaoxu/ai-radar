@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 const CRAWL_INTERVAL = 10 * 60 * 1000;   // 10分钟自动全量抓取
 const SESSION_KEY = 'ai-radar-last-crawl-check';
@@ -14,6 +14,12 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
   const [lastCrawlTime, setLastCrawlTime] = useState<Date | null>(null);
   const [autoCrawl, setAutoCrawl] = useState(true);
   const [crawling, setCrawling] = useState(false);
+
+  // 用 ref 保持回调引用最新，避免闭包过期
+  const onFetchRef = useRef(onFetch);
+  const onCrawlRef = useRef(onCrawl);
+  onFetchRef.current = onFetch;
+  onCrawlRef.current = onCrawl;
 
   // 页面加载时自动检查是否需要抓取（sessionStorage 防重，10分钟内不重复检查）
   useEffect(() => {
@@ -36,7 +42,7 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
           if (now - lastCrawl > CRAWL_INTERVAL) {
             console.log('[自动] 距上次抓取超过10分钟，自动触发');
             const done = await doCrawl();
-            if (done) await onFetch();
+            if (done) await onFetchRef.current();
           }
         }
       } catch {
@@ -44,7 +50,7 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
       }
     }
     checkAndCrawl();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // 长周期：自动全量抓取
   useEffect(() => {
@@ -53,15 +59,15 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
     const interval = setInterval(async () => {
       console.log('[自动] 定时全量抓取触发');
       const done = await doCrawl();
-      if (done) await onFetch();
+      if (done) await onFetchRef.current();
     }, CRAWL_INTERVAL);
     return () => clearInterval(interval);
-  }, [autoCrawl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoCrawl]);
 
   const doCrawl = useCallback(async (): Promise<boolean> => {
     setCrawling(true);
     try {
-      await onCrawl();
+      await onCrawlRef.current();
       setLastCrawlTime(new Date());
       return true;
     } catch {
@@ -69,12 +75,12 @@ export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
     } finally {
       setCrawling(false);
     }
-  }, [onCrawl]);
+  }, []);
 
   const manualCrawl = useCallback(async () => {
     const done = await doCrawl();
-    if (done) await onFetch();
-  }, [doCrawl, onFetch]);
+    if (done) await onFetchRef.current();
+  }, [doCrawl]);
 
   const getTimeAgo = useCallback((date: Date | null): string => {
     if (!date) return '暂无';

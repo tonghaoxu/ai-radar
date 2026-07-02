@@ -115,60 +115,72 @@ const modelBenchmarks = [
 ];
 
 // 从 JSON 文件读取产品数据
-const productsPath = path.join(process.cwd(), 'data', 'products.json');
-const products = JSON.parse(fs.readFileSync(productsPath, 'utf-8'));
+let products: any[] = [];
+try {
+  const productsPath = path.join(process.cwd(), 'data', 'products.json');
+  products = JSON.parse(fs.readFileSync(productsPath, 'utf-8'));
+  console.log(`📦 读取到 ${products.length} 个产品`);
+} catch (err: any) {
+  console.error(`❌ 无法读取产品数据文件: ${err.message}`);
+  process.exit(1);
+}
 
 function seed() {
   console.log('🌱 开始填充种子数据...\n');
   const db = getDb();
 
-  // 1. 数据源
-  console.log(`📡 注册 ${sources.length} 个数据源...`);
-  for (const s of sources) {
-    upsertSource(s);
-  }
+  // 将所有写入操作包裹在事务中，保证原子性
+  const seedAll = db.transaction(() => {
+    // 1. 数据源
+    console.log(`📡 注册 ${sources.length} 个数据源...`);
+    for (const s of sources) {
+      upsertSource(s);
+    }
 
-  // 2. 模型
-  console.log(`🤖 添加 ${models.length} 个AI模型...`);
-  const modelStmt = db.prepare(`
-    INSERT OR REPLACE INTO models (id, name, provider, version, params_b, context_window, modalities, license_type, is_open_source, description, released_at)
-    VALUES (@id, @name, @provider, @version, @params_b, @context_window, @modalities, @license_type, @is_open_source, @description, @released_at)
-  `);
-  for (const m of models) {
-    modelStmt.run(m);
-  }
+    // 2. 模型
+    console.log(`🤖 添加 ${models.length} 个AI模型...`);
+    const modelStmt = db.prepare(`
+      INSERT OR REPLACE INTO models (id, name, provider, version, params_b, context_window, modalities, license_type, is_open_source, description, released_at)
+      VALUES (@id, @name, @provider, @version, @params_b, @context_window, @modalities, @license_type, @is_open_source, @description, @released_at)
+    `);
+    for (const m of models) {
+      modelStmt.run(m);
+    }
 
-  // 3. 模型价格
-  console.log(`💰 添加 ${modelPrices.length} 条价格数据...`);
-  const priceStmt = db.prepare(`
-    INSERT OR REPLACE INTO model_prices (id, model_id, input_price_per_1m, output_price_per_1m, currency, cache_discount, free_tier)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `);
-  for (const p of modelPrices) {
-    const priceId = `price_${p.model_id}`;
-    priceStmt.run(priceId, p.model_id, p.input_price_per_1m, p.output_price_per_1m, p.currency, p.cache_discount, p.free_tier);
-  }
+    // 3. 模型价格
+    console.log(`💰 添加 ${modelPrices.length} 条价格数据...`);
+    const priceStmt = db.prepare(`
+      INSERT OR REPLACE INTO model_prices (id, model_id, input_price_per_1m, output_price_per_1m, currency, cache_discount, free_tier)
+      VALUES (@id, @model_id, @input_price_per_1m, @output_price_per_1m, @currency, @cache_discount, @free_tier)
+    `);
+    for (const p of modelPrices) {
+      const priceId = `price_${p.model_id}`;
+      priceStmt.run({ id: priceId, ...p });
+    }
 
-  // 4. 基准测试
-  console.log(`📊 添加 ${modelBenchmarks.length} 条基准测试...`);
-  const benchStmt = db.prepare(`
-    INSERT OR REPLACE INTO model_benchmarks (id, model_id, benchmark_name, score, metric, tested_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  for (const b of modelBenchmarks) {
-    const benchId = `bench_${b.model_id}_${b.benchmark_name}`;
-    benchStmt.run(benchId, b.model_id, b.benchmark_name, b.score, b.metric, b.tested_at);
-  }
+    // 4. 基准测试
+    console.log(`📊 添加 ${modelBenchmarks.length} 条基准测试...`);
+    const benchStmt = db.prepare(`
+      INSERT OR REPLACE INTO model_benchmarks (id, model_id, benchmark_name, score, metric, tested_at)
+      VALUES (@id, @model_id, @benchmark_name, @score, @metric, @tested_at)
+    `);
+    for (const b of modelBenchmarks) {
+      const benchId = `bench_${b.model_id}_${b.benchmark_name}`;
+      benchStmt.run({ id: benchId, ...b });
+    }
 
-  // 5. AI产品（从 data/products.json 读取）
-  console.log(`📦 添加 ${products.length} 个AI产品...`);
-  const prodStmt = db.prepare(`
-    INSERT OR REPLACE INTO products (id, name, category, description, url, pricing_model, based_model, is_hot)
-    VALUES (@id, @name, @category, @description, @url, @pricing_model, @based_model, @is_hot)
-  `);
-  for (const p of products) {
-    prodStmt.run(p);
-  }
+    // 5. AI产品（从 data/products.json 读取）
+    console.log(`📦 添加 ${products.length} 个AI产品...`);
+    const prodStmt = db.prepare(`
+      INSERT OR REPLACE INTO products (id, name, category, description, url, pricing_model, based_model, is_hot)
+      VALUES (@id, @name, @category, @description, @url, @pricing_model, @based_model, @is_hot)
+    `);
+    for (const p of products) {
+      prodStmt.run(p);
+    }
+  });
+
+  seedAll();
 
   console.log('\n✅ 种子数据填充完成！');
   console.log(`   - ${sources.length} 个数据源`);
@@ -180,4 +192,9 @@ function seed() {
   closeDb();
 }
 
-seed();
+try {
+  seed();
+} catch (err: any) {
+  console.error(`❌ 种子数据填充失败: ${err.message}`);
+  process.exit(1);
+}

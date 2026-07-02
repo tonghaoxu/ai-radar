@@ -74,8 +74,8 @@ export async function crawlRssSource(source: {
         source_id: source.id,
         title,
         url,
-        summary: item.contentSnippet?.substring(0, 500) || item.content?.replace(/<[^>]*>/g, '').substring(0, 500) || '',
-        content_snippet: item.content?.replace(/<[^>]*>/g, '').substring(0, 1000) || '',
+        summary: item.contentSnippet?.substring(0, 500) || stripHtml(item.content)?.substring(0, 500) || '',
+        content_snippet: stripHtml(item.content)?.substring(0, 1000) || '',
         author: item.creator || '',
         published_at: publishedAt,
         category: inferCategory(title, source.name),
@@ -92,7 +92,21 @@ export async function crawlRssSource(source: {
     console.error(`[RSS Error] ${source.name}: ${err.message}`);
     return 0;
   }
-  return count;
+}
+
+/** 去除 HTML 标签并解码常见 HTML 实体 */
+function stripHtml(html?: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&#x2F;/g, '/')
+    .replace(/&#x27;/g, "'");
 }
 
 export async function crawlAllRss(): Promise<{ source: string; count: number }[]> {

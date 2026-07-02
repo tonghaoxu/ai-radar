@@ -16,7 +16,11 @@ export async function GET(request: NextRequest) {
       }
       return NextResponse.json({ article });
     } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
+      console.error('[Articles] GET by id:', err);
+      return NextResponse.json(
+        { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+        { status: 500 }
+      );
     }
   }
 
@@ -26,8 +30,8 @@ export async function GET(request: NextRequest) {
   const isStarred = searchParams.get('isStarred') === 'true' || undefined;
   const search = searchParams.get('search') || undefined;
   const date = searchParams.get('date') || undefined;
-  const limit = parseInt(searchParams.get('limit') || '50');
-  const offset = parseInt(searchParams.get('offset') || '0');
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
+  const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
 
   try {
     const [articles, total, sources, sourceCount] = await Promise.all([
@@ -39,7 +43,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ articles, total, sources, sourceCount });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[Articles] GET:', err);
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }
 
@@ -56,7 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, results });
     }
 
-    // 标记已读/收藏
+    // 标记已读/收藏（前端同源自动放行 ∈ auth.ts）
     if (body.action === 'markRead' && body.id) {
       markArticleRead(body.id, body.isRead);
       return NextResponse.json({ success: true });
@@ -69,6 +77,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[Articles] POST:', err);
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }

@@ -96,14 +96,12 @@ export async function fetchArxivPapers(options: {
 
 export async function crawlAllArxiv(): Promise<number> {
   const categories = ['cs.AI', 'cs.CL', 'cs.CV', 'cs.LG'];
-  let total = 0;
 
-  for (const cat of categories) {
-    const count = await fetchArxivPapers({ category: cat, maxResults: 15 });
-    total += count;
-  }
+  const counts = await Promise.all(
+    categories.map((cat) => fetchArxivPapers({ category: cat, maxResults: 15 }))
+  );
 
-  return total;
+  return counts.reduce((sum, c) => sum + c, 0);
 }
 
 // 轻量 XML 解析（提取 <entry> 中的关键字段）

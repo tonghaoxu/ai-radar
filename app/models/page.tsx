@@ -32,19 +32,6 @@ interface Model {
   benchmarks: ModelBenchmark[];
 }
 
-const PROVIDER_COLORS: Record<string, string> = {
-  OpenAI: 'bg-green-100 text-green-800',
-  Anthropic: 'bg-orange-100 text-orange-800',
-  Google: 'bg-blue-100 text-blue-800',
-  DeepSeek: 'bg-purple-100 text-purple-800',
-  '阿里通义': 'bg-red-100 text-red-800',
-  '字节跳动': 'bg-cyan-100 text-cyan-800',
-  '百度': 'bg-indigo-100 text-indigo-800',
-  '月之暗面': 'bg-pink-100 text-pink-800',
-  xAI: 'bg-gray-100 text-gray-800',
-  Meta: 'bg-sky-100 text-sky-800',
-};
-
 export default function ModelsPage() {
   const [models, setModels] = useState<Model[]>([]);
   const [providers, setProviders] = useState<string[]>([]);

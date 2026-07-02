@@ -153,23 +153,23 @@ function parseChineseTime(text: string): string | null {
   // 尝试 "2小时前" "昨天" "3天前"
   const now = new Date();
   if (/刚刚|片刻?/.test(text)) return now.toISOString();
-  if (/(\d+)\s*分钟前/.test(text)) {
-    const min = parseInt(RegExp.$1);
-    now.setMinutes(now.getMinutes() - min);
+  const minutesMatch = text.match(/(\d+)\s*分钟前/);
+  if (minutesMatch) {
+    now.setMinutes(now.getMinutes() - parseInt(minutesMatch[1]));
     return now.toISOString();
   }
-  if (/(\d+)\s*小时前/.test(text)) {
-    const hr = parseInt(RegExp.$1);
-    now.setHours(now.getHours() - hr);
+  const hoursMatch = text.match(/(\d+)\s*小时前/);
+  if (hoursMatch) {
+    now.setHours(now.getHours() - parseInt(hoursMatch[1]));
     return now.toISOString();
   }
   if (/昨天/.test(text)) {
     now.setDate(now.getDate() - 1);
     return now.toISOString().substring(0, 10);
   }
-  if (/(\d+)\s*天前/.test(text)) {
-    const days = parseInt(RegExp.$1);
-    now.setDate(now.getDate() - days);
+  const daysMatch = text.match(/(\d+)\s*天前/);
+  if (daysMatch) {
+    now.setDate(now.getDate() - parseInt(daysMatch[1]));
     return now.toISOString().substring(0, 10);
   }
   return null;

@@ -184,8 +184,11 @@ function initTables(db: Database.Database) {
   try {
     db.prepare("INSERT INTO articles_fts(articles_fts) VALUES('rebuild')").run();
     db.prepare("INSERT INTO papers_fts(papers_fts) VALUES('rebuild')").run();
-  } catch {
-    // 首次创建时 FTS 表可能为空，忽略
+  } catch (err: any) {
+    // 表尚不存在时忽略，其他错误需要输出日志排查
+    if (!err.message?.includes('no such table')) {
+      console.error('[DB] FTS 索引重建失败:', err.message);
+    }
   }
 }
 
@@ -422,6 +425,18 @@ export function getModelBenchmarks(modelId: string) {
   return db.prepare('SELECT * FROM model_benchmarks WHERE model_id = ? ORDER BY benchmark_name').all(modelId);
 }
 
+/** 批量获取所有模型的基准测试，避免 N+1 查询 */
+export function getAllModelBenchmarks() {
+  const db = getDb();
+  const rows = db.prepare('SELECT * FROM model_benchmarks ORDER BY benchmark_name').all() as any[];
+  const byModel: Record<string, any[]> = {};
+  for (const row of rows) {
+    if (!byModel[row.model_id]) byModel[row.model_id] = [];
+    byModel[row.model_id].push(row);
+  }
+  return byModel;
+}
+
 export function getModelProviders() {
   const db = getDb();
   return db.prepare('SELECT DISTINCT provider FROM models ORDER BY provider').all();
@@ -479,6 +494,8 @@ export function upsertPaper(paper: {
   code_url?: string;
 }) {
   const db = getDb();
+  // 注意：arxiv_id 为 NULL 时 UNIQUE 约束不生效（SQLite 将多个 NULL 视为互异），
+  // 需要业务层保证不重复插入无 arxiv_id 的论文
   const stmt = db.prepare(`
     INSERT INTO papers (id, arxiv_id, title, authors, abstract, categories, primary_category, published_at, pdf_url, code_url, crawled_at)
     VALUES (@id, @arxiv_id, @title, @authors, @abstract, @categories, @primary_category, @published_at, @pdf_url, @code_url, datetime('now'))
@@ -551,7 +568,7 @@ export function searchAll(query: string) {
     SELECT a.*, s.name as source_name, 'article' as result_type
     FROM articles a
     LEFT JOIN sources s ON a.source_id = s.id
-    WHERE a.title LIKE ? OR a.summary LIKE ?
+    WHERE a.title LIKE ? ESCAPE '\\' OR a.summary LIKE ? ESCAPE '\\'
     ORDER BY a.published_at DESC
     LIMIT 20
   `).all(like, like);
@@ -559,7 +576,7 @@ export function searchAll(query: string) {
   const papers = db.prepare(`
     SELECT p.*, 'paper' as result_type
     FROM papers p
-    WHERE p.title LIKE ? OR p.abstract LIKE ?
+    WHERE p.title LIKE ? ESCAPE '\\' OR p.abstract LIKE ? ESCAPE '\\'
     ORDER BY p.published_at DESC
     LIMIT 20
   `).all(like, like);

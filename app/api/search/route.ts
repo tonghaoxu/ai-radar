@@ -10,9 +10,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = searchAll(q);
+    // 转义 LIKE 通配符，避免用户输入 % 或 _ 被当作通配符
+    const escaped = q.replace(/[%_]/g, '\\$&');
+    const results = searchAll(escaped);
     return NextResponse.json(results);
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[Search]:', err);
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }

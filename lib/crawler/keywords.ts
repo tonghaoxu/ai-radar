@@ -46,15 +46,22 @@ const ZH_AI_KEYWORDS = [
 // 短关键词（≤3 字符）需要用单词边界匹配，避免 "aimed" 匹配 "ai"
 const SHORT_KW = new Set(['ai', 'gpu', 'tts', 'stt', 'moe', 'rag', 'mcp', 'nlp', 'agi', 'api']);
 
+// 预编译短关键词正则，避免循环中重复创建
+const SHORT_KW_REGEXES: [RegExp, string][] = [...SHORT_KW].map(kw => [
+  new RegExp(`\\b${kw}\\b`, 'i'),
+  kw,
+]);
+
 /** 判断标题（中英文）是否与 AI 相关 */
 export function isAiRelated(title: string): boolean {
   const t = title.toLowerCase();
   // 先检查英文关键词
   for (const kw of EN_AI_KEYWORDS) {
     if (SHORT_KW.has(kw)) {
-      // 短关键词：单词边界匹配
-      const re = new RegExp(`\\b${kw}\\b`, 'i');
-      if (re.test(title)) return true;
+      // 短关键词：使用预编译的单词边界正则
+      for (const [re, shortKw] of SHORT_KW_REGEXES) {
+        if (shortKw === kw && re.test(title)) return true;
+      }
     } else {
       if (t.includes(kw)) return true;
     }

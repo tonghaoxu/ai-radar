@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getModels, getModelBenchmarks, getModelProviders } from '@/lib/db';
+import { getModels, getAllModelBenchmarks, getModelProviders } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -11,22 +11,27 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '50');
 
   try {
-    const [models, providers] = await Promise.all([
+    const [models, providers, allBenchmarks] = await Promise.all([
       Promise.resolve(getModels({ provider, isOpenSource, modality, limit })),
       Promise.resolve(getModelProviders()),
+      Promise.resolve(getAllModelBenchmarks()),
     ]);
 
-    // 为每个模型附加基准测试数据
-    const modelsWithBenchmarks = (models as any[]).map((model) => {
-      const benchmarks = getModelBenchmarks(model.id);
-      return { ...model, benchmarks };
-    });
+    // 批量附加基准测试（一次查询替代 N 次查询）
+    const modelsWithBenchmarks = (models as any[]).map((model) => ({
+      ...model,
+      benchmarks: allBenchmarks[model.id] || [],
+    }));
 
     return NextResponse.json({
       models: modelsWithBenchmarks,
       providers: (providers as any[]).map((p) => p.provider),
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[Models]:', err);
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }

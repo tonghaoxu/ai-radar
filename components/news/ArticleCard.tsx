@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,11 +29,7 @@ interface ArticleCardProps {
 }
 
 export function ArticleCard({ article, onStar }: ArticleCardProps) {
-  const [timeAgo, setTimeAgo] = useState('');
-
-  useEffect(() => {
-    setTimeAgo(publishedAtToTimeAgo(article.published_at, article.language));
-  }, [article.published_at, article.language]);
+  const timeAgo = publishedAtToTimeAgo(article.published_at, article.language);
 
   return (
     <Card className={`group hover:shadow-md transition-shadow ${article.is_read ? 'opacity-60' : ''}`}>

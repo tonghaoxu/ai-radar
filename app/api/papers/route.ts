@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   const isFeatured = searchParams.has('isFeatured')
     ? searchParams.get('isFeatured') === 'true'
     : undefined;
-  const limit = parseInt(searchParams.get('limit') || '50');
-  const offset = parseInt(searchParams.get('offset') || '0');
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
+  const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
 
   try {
     const [papers, categories] = await Promise.all([
@@ -22,6 +22,10 @@ export async function GET(request: NextRequest) {
       categories: (categories as any[]).map((c) => c.primary_category),
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error('[Papers]:', err);
+    return NextResponse.json(
+      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
+      { status: 500 }
+    );
   }
 }

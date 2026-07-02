@@ -13,27 +13,41 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
     });
     const ids: number[] = await response.json();
 
-    // 只处理前 N 个
+    // 只处理前 N 个，分批并发（每批 5 个）
     const topIds = ids.slice(0, maxStories);
+    const CONCURRENCY = 5;
     let count = 0;
 
-    for (const id of topIds) {
-      try {
-        const itemRes = await fetch(`${HN_ITEM}/${id}.json`, {
-          signal: AbortSignal.timeout(5000),
-        });
-        const item = await itemRes.json();
+    for (let i = 0; i < topIds.length; i += CONCURRENCY) {
+      const batch = topIds.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (id) => {
+          try {
+            const itemRes = await fetch(`${HN_ITEM}/${id}.json`, {
+              signal: AbortSignal.timeout(5000),
+            });
+            if (!itemRes.ok) return null;
+            const item = await itemRes.json();
 
-        if (!item || !item.title) continue;
-        if (item.type !== 'story') continue;
-        if (!isAiRelated(item.title)) continue;
+            if (!item || !item.title) return null;
+            if (item.type !== 'story') return null;
+            if (!isAiRelated(item.title)) return null;
 
+            return item;
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      for (const item of results) {
+        if (!item) continue;
         const articleId = uuidv4();
         upsertArticle({
           id: articleId,
           source_id: 'hackernews',
           title: item.title,
-          url: item.url || `https://news.ycombinator.com/item?id=${id}`,
+          url: item.url || `https://news.ycombinator.com/item?id=${item.id}`,
           summary: item.text?.substring(0, 500) || '',
           author: item.by || '',
           published_at: new Date(item.time * 1000).toISOString(),
@@ -41,8 +55,6 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
           language: 'en',
         });
         count++;
-      } catch {
-        // 跳过单条失败
       }
     }
 
