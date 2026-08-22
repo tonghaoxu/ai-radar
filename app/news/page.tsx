@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArticleCard } from '@/components/news/ArticleCard';
 import { CategoryFilter } from '@/components/news/CategoryFilter';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { RefreshCw, Loader2, X, AlertTriangle } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
+import { NEWS_CACHE_KEY, NEWS_SCROLL_KEY, NEWS_RESTORE_FLAG } from '@/lib/session-keys';
 
 interface Article {
   id: string;
@@ -33,15 +34,34 @@ interface Source {
   last_error?: string | null;
 }
 
-// —— 列表状态缓存：让「详情页返回资讯流」能停在原来的位置 ——
+// —— 让「详情页返回资讯流」停在原来的位置 ——
 //
-// 滚动位置本身不用我们存。浏览器和 Next 路由本来就会按历史记录恢复滚动，
-// 之前之所以每次都弹回顶部，是因为返回时组件重新挂载、列表是空的——
-// 恢复滚动的那一刻页面根本没有高度，滚无可滚。
-// 所以这里只解决「首帧就要有内容」，滚动恢复交还给平台，别去跟它抢。
-const LIST_CACHE_KEY = 'ai-radar-news-cache';
+// 要同时解决两件事，缺一不可：
+//
+// 1) 首帧就得有内容。返回时组件是重新挂载的，列表回到空数组、渲染 loading 转圈，
+//    页面高度为 0 —— 谁来恢复滚动都滚不动。所以列表快照进 sessionStorage，
+//    用 useState 惰性初始化同步塞进首帧。
+//
+// 2) 滚动位置得自己恢复。浏览器 / Next 确实会按历史记录恢复，但那发生在
+//    history 回退的瞬间，比 React 重新渲染要早，那时页面还是空的，恢复到 0。
+//    所以内容就位后必须由我们再滚一次。
 const CACHE_TTL = 30 * 60 * 1000;        // 超过 30 分钟的缓存直接丢弃，走正常加载
+const WATCHDOG_MS = 500;                 // 恢复滚动后盯住位置的时长，见下面的说明
 const REVALIDATE_AFTER = 5 * 60 * 1000;  // 缓存足够新时连后台刷新都不做，避免列表跳动
+
+// 只有「后退回来」才恢复滚动；从导航栏点进资讯流必须停在顶部。
+// history.state 里没有可用的 per-entry key（Next 只塞了 __NA 和内部路由树），
+// 只能靠两个信号合起来判断，各管一条路径：
+//   · 浏览器自带的后退按钮 —— popstate 先于渲染到达，靠下面这个模块级时间戳
+//   · 详情页的「返回资讯流」 —— router.back() 后 Next 先渲染、popstate 晚 ~45ms 才到，
+//     首帧判断根本来不及，所以改由详情页在跳转前写 NEWS_RESTORE_FLAG
+// 时间戳必须记在模块级：popstate 触发时组件还没挂载，记在组件里就晚了。
+let lastPopstateAt = 0;
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    lastPopstateAt = Date.now();
+  });
+}
 
 interface NewsCache {
   articles: Article[];
@@ -60,7 +80,7 @@ interface NewsCache {
  */
 function readListCache(urlSearch: string): NewsCache | null {
   try {
-    const raw = sessionStorage.getItem(LIST_CACHE_KEY);
+    const raw = sessionStorage.getItem(NEWS_CACHE_KEY);
     if (!raw) return null;
     const cache = JSON.parse(raw) as NewsCache;
     if (!cache?.articles?.length) return null;
@@ -77,7 +97,7 @@ function NewsPageContent() {
   const urlSearch = searchParams.get('search') || '';
 
   // 惰性初始化：缓存必须在首帧就进入 state，列表才能带着完整高度渲染出来，
-  // 平台的滚动恢复才有东西可以滚。放进 useEffect 就晚了——那一刻页面还是空的。
+  // 后面才有东西可以滚。放进 useEffect 就晚了——那一刻页面还是空的。
   const [restored] = useState<NewsCache | null>(() => {
     try {
       return readListCache(urlSearch);
@@ -85,6 +105,27 @@ function NewsPageContent() {
       return null; // 服务端渲染时没有 sessionStorage
     }
   });
+
+  const [arrivedViaHistory] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    // 注意：不要在这里清除标记。React 严格模式会把初始化函数跑两遍，
+    // 第一遍清掉的话第二遍就读不到了。清除放在下面的 effect 里。
+    let flagged = false;
+    try {
+      flagged = sessionStorage.getItem(NEWS_RESTORE_FLAG) === '1';
+    } catch {}
+    return flagged || Date.now() - lastPopstateAt < 1500;
+  });
+
+  // 标记是一次性的，用完即焚，免得下次从导航栏进来时被误判成后退
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(NEWS_RESTORE_FLAG);
+    } catch {}
+  }, []);
+
+  // 用来判断列表是否还在文档里，见下面滚动记录处的说明
+  const listRef = useRef<HTMLDivElement>(null);
 
   const [articles, setArticles] = useState<Article[]>(restored?.articles ?? []);
   const [sources, setSources] = useState<Source[]>(restored?.sources ?? []);
@@ -159,11 +200,73 @@ function NewsPageContent() {
         searchQuery,
         savedAt: Date.now(),
       };
-      sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(cache));
+      sessionStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(cache));
     } catch {
       // 配额超了就放弃缓存，不影响正常浏览
     }
   }, [articles, sources, total, category, sourceId, showStarred, searchQuery]);
+
+  // —— 记录滚动位置 ——
+  // 两个坑，都踩过：
+  // 1) 不要用 rAF 节流。后台标签页里 rAF 会被暂停，最后一段滚动永远落不了盘。
+  //    往 sessionStorage 写一个数字本来就极便宜，滚动事件每帧至多一次，直接同步写。
+  // 2) 不要在卸载时补写 window.scrollY。那一刻详情页 DOM 已经换上去了，页面高度骤降，
+  //    浏览器会把 scrollY 自动钳位到 0，补写等于把好值擦成 0。
+  //    这里再加一道保险：列表节点已经脱离文档就不记——不管这个事件是谁触发的。
+  useEffect(() => {
+    const onScroll = () => {
+      if (!listRef.current?.isConnected) return;
+      try {
+        sessionStorage.setItem(NEWS_SCROLL_KEY, String(window.scrollY));
+      } catch {}
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // —— 恢复滚动位置 ——
+  // 只在「缓存命中 + 是后退回来的」时候做。首帧列表已经渲染出来了，
+  // 这里在浏览器绘制前滚回去，所以看不到跳动。
+  useLayoutEffect(() => {
+    if (!restored || !arrivedViaHistory) return;
+    let y = 0;
+    try {
+      y = Number(sessionStorage.getItem(NEWS_SCROLL_KEY) || 0);
+    } catch {}
+    if (!y) return;
+
+    window.scrollTo(0, y);
+
+    // 滚回去还不够，之后得再盯一小会儿：浏览器的滚动锚定、Next 的路由滚动处理，
+    // 以及字体/图片加载引起的高度变化，都可能在随后几十毫秒里把位置改掉。
+    //
+    // 用 timer 而不是 requestAnimationFrame：后台标签页里 rAF 会被暂停，
+    // 补偿就永远跑不到。
+    //
+    // 用户一旦自己动了（滚轮/触摸/按键）立刻收手，绝不跟人抢滚动条。
+    const deadline = Date.now() + WATCHDOG_MS;
+    let stopped = false;
+    const yieldToUser = () => {
+      stopped = true;
+    };
+    // mousedown 是为了拖滚动条：那个动作不触发 wheel，也不触发 keydown
+    const userEvents = ['wheel', 'touchstart', 'keydown', 'mousedown'];
+    userEvents.forEach((e) => window.addEventListener(e, yieldToUser, { passive: true }));
+
+    const timer = setInterval(() => {
+      if (stopped || Date.now() > deadline) {
+        clearInterval(timer);
+        return;
+      }
+      if (Math.abs(window.scrollY - y) > 2) window.scrollTo(0, y);
+    }, 32);
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      userEvents.forEach((e) => window.removeEventListener(e, yieldToUser));
+    };
+  }, [restored, arrivedViaHistory]);
 
   // 切换筛选条件时回到顶部（首次挂载不算，那是「恢复」场景）
   const isFirstFilterRun = useRef(true);
@@ -380,7 +483,7 @@ function NewsPageContent() {
           </Button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-3" ref={listRef}>
           {articles.map((article) => (
             <ArticleCard key={article.id} article={article} onStar={handleStar} />
           ))}

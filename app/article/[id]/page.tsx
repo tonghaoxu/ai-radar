@@ -11,6 +11,7 @@ import { Loader2, ExternalLink, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { NEWS_RESTORE_FLAG } from '@/lib/session-keys';
 
 interface Article {
   id: string;
@@ -32,11 +33,20 @@ export default function ArticleDetailPage() {
   const router = useRouter();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
-  // 有历史记录就走 back()：URL（含 ?search=）原样回去，也不会多压一条历史
-  // 点击时才读 history.length，省掉一个 state 和一次 effect
+  // 有历史记录就走 back()：URL（含 ?search=）原样回去，也不会多压一条历史。
+  // 点击时才读 history.length，省掉一个 state 和一次 effect。
   const handleBack = () => {
-    if (window.history.length > 1) router.back();
-    else router.push('/news');
+    if (window.history.length > 1) {
+      // 告诉资讯流「这是后退回来的，恢复滚动位置」。
+      // 不能让它只靠 popstate 判断：router.back() 之后 Next 会先把资讯流渲染出来，
+      // 浏览器的 popstate 要晚几十毫秒才到，那时首帧的判断早就做完了。
+      try {
+        sessionStorage.setItem(NEWS_RESTORE_FLAG, '1');
+      } catch {}
+      router.back();
+    } else {
+      router.push('/news');
+    }
   };
 
   useEffect(() => {

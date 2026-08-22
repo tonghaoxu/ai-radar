@@ -125,15 +125,24 @@ React Pages (app/*/page.tsx)
 
 ### 资讯流的返回定位（`app/news/page.tsx`）
 
-从 `/article/[id]` 返回 `/news` 时不再弹回顶部。原理是**只解决「首帧要有内容」，滚动恢复交还给平台**：
+从 `/article/[id]` 返回 `/news` 时停在原来的位置。**两件事缺一不可**，只做其中一件都没用：
 
-- 列表 + 筛选条件快照进 sessionStorage 的 `ai-radar-news-cache`
-- 返回时用 `useState` 的**惰性初始化**把缓存同步塞进首帧（放进 `useEffect` 就晚了——那一刻页面还是空的，浏览器想恢复滚动也无处可滚，这正是原来跳顶部的根因）
+**1. 首帧就得有内容**（`ai-radar-news-cache`）
+- 列表 + 筛选条件快照进 sessionStorage，返回时用 `useState` 的**惰性初始化**同步塞进首帧
+- 放进 `useEffect` 就晚了——那一刻页面还是空的，谁来恢复滚动都滚不动，这是原来跳顶部的根因
 - 缓存 5 分钟内不请求，5–30 分钟内后台 `silent` 刷新（不切 `loading`，列表不会被转圈替换掉），超 30 分钟丢弃
 - URL 的 `?search=` 与缓存里的搜索词不一致时拒绝缓存，避免新搜索命中旧结果
-- 详情页的「返回资讯流」用 `router.back()` 而非 `<Link href="/news">`，这样 URL（含 `?search=`）原样回去，也不会多压一条历史
 
-**不要**再自己存取 `window.scrollY`：写过一版，卸载时补写会把好值擦成 0（那一刻详情页 DOM 已挂上，页面高度骤降导致 scrollY 被浏览器钳位到 0），而且会跟框架自带的历史滚动恢复互相打架。
+**2. 滚动位置得自己恢复**（`ai-radar-news-scroll` + `ai-radar-news-restore`）
+- 平台自带的历史滚动恢复发生在 history 回退的**瞬间**，比 React 重新渲染早，那时页面还是空的 → 恢复到 0。内容就位后必须由我们再滚一次
+- 恢复后还要用 timer 看门狗盯 500ms：浏览器滚动锚定、Next 的路由滚动处理、字体/图片加载都可能随后把位置改掉。**用 timer 不用 rAF**（后台标签页里 rAF 被暂停）；用户一动（wheel / touchstart / keydown / mousedown）立即收手
+- 滚动位置**同步**写入，不做 rAF 节流；**绝不在卸载时补写 `window.scrollY`**——那一刻详情页 DOM 已挂上，页面高度骤降会让浏览器把 scrollY 钳位到 0，补写等于把好值擦成 0（踩过）
+
+**怎么判断「是后退回来的」**（只有后退才恢复，从导航栏点进来必须在顶部）——需要两个信号合起来，各管一条路径：
+- **浏览器后退按钮**：popstate 先于渲染到达 → 模块级时间戳 `lastPopstateAt`
+- **详情页的「返回资讯流」**：`router.back()` 后 Next **先渲染**、popstate 晚约 45ms 才到，首帧判断根本来不及 → 由详情页在跳转前写 `ai-radar-news-restore` 标记，资讯流读完即清
+
+键名集中在 `lib/session-keys.ts`。详情页返回用 `router.back()` 而非 `<Link href="/news">`，这样 URL（含 `?search=`）原样回去，也不会多压一条历史。
 
 ### 本地启动（`start.bat` + `launcher.html`）
 
