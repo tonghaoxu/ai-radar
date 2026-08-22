@@ -97,6 +97,16 @@ function readListCache(urlSearch: string): NewsCache | null {
   }
 }
 
+/** 筛选条件指纹。用它判断「这组数据是不是已经在手上」，见下面对严格模式的说明。 */
+function filterKey(
+  category: string,
+  sourceId: string,
+  showStarred: boolean,
+  searchQuery: string
+) {
+  return `${category}|${sourceId}|${showStarred}|${searchQuery}`;
+}
+
 function NewsPageContent() {
   const searchParams = useSearchParams();
   const urlSearch = searchParams.get('search') || '';
@@ -141,7 +151,25 @@ function NewsPageContent() {
   const [showStarred, setShowStarred] = useState(restored?.showStarred ?? false);
   const [searchQuery, setSearchQuery] = useState(restored?.searchQuery ?? urlSearch);
 
-  const isFirstLoad = useRef(true);
+  // —— 为什么不用「是不是第一次」这种一次性 ref 做守卫 ——
+  //
+  // app router 从 Next 13.5.1 起默认开启 React 严格模式，开发环境下 effect 会跑两遍
+  // （挂载 → 清理 → 再挂载）。一次性 ref 会被第一遍消费掉，第二遍就直接掉进
+  // 非静默的 fetchArticles()：刚从缓存渲染出来的列表立刻被 loading 转圈清空，
+  // 页面高度从两万像素塌回几百，滚动位置随之归零——就是「闪回顶部再跳回来」的成因。
+  //
+  // 改成记「哪一组筛选条件的数据已经在手上」，重复执行天然幂等。
+  const loadedKeyRef = useRef<string | null>(
+    restored
+      ? filterKey(
+          restored.category,
+          restored.sourceId,
+          restored.showStarred,
+          restored.searchQuery
+        )
+      : null
+  );
+  const revalidatedRef = useRef(false);
 
   const fetchArticles = useCallback(
     async (opts: { silent?: boolean } = {}) => {
@@ -178,18 +206,26 @@ function NewsPageContent() {
   }, [urlSearch]);
 
   useEffect(() => {
-    if (isFirstLoad.current) {
-      isFirstLoad.current = false;
-      // 带着缓存回来的：够新就完全不请求，稍旧才后台静默刷新一次
-      if (restored) {
-        if (Date.now() - restored.savedAt > REVALIDATE_AFTER) {
-          fetchArticles({ silent: true });
-        }
-        return;
+    const key = filterKey(category, sourceId, showStarred, searchQuery);
+
+    if (loadedKeyRef.current === key) {
+      // 这组数据已经在手上（来自 sessionStorage 缓存）。
+      // 只有缓存明显变旧才后台静默刷新一次：静默 = 不切 loading，
+      // 列表不会被替换掉，滚动位置也就不会丢。
+      if (
+        restored &&
+        !revalidatedRef.current &&
+        Date.now() - restored.savedAt > REVALIDATE_AFTER
+      ) {
+        revalidatedRef.current = true;
+        fetchArticles({ silent: true });
       }
+      return;
     }
+
+    loadedKeyRef.current = key;
     fetchArticles();
-  }, [fetchArticles, restored]);
+  }, [category, sourceId, showStarred, searchQuery, fetchArticles, restored]);
 
   // —— 写缓存：列表或筛选条件变化时快照一次 ——
   useEffect(() => {
@@ -274,12 +310,20 @@ function NewsPageContent() {
   }, [restored, arrivedViaHistory]);
 
   // 切换筛选条件时回到顶部（首次挂载不算，那是「恢复」场景）
-  const isFirstFilterRun = useRef(true);
+  // 同样不能用一次性 ref：严格模式跑第二遍时会直接 scrollTo(0, 0)，
+  // 把刚恢复好的滚动位置顶回去。记「已经为哪组条件归过位」才是幂等的。
+  const scrolledForKeyRef = useRef<string | null>(
+    filterKey(
+      restored?.category ?? '全部',
+      restored?.sourceId ?? '',
+      restored?.showStarred ?? false,
+      restored?.searchQuery ?? urlSearch
+    )
+  );
   useEffect(() => {
-    if (isFirstFilterRun.current) {
-      isFirstFilterRun.current = false;
-      return;
-    }
+    const key = filterKey(category, sourceId, showStarred, searchQuery);
+    if (scrolledForKeyRef.current === key) return;
+    scrolledForKeyRef.current = key;
     window.scrollTo(0, 0);
   }, [category, sourceId, showStarred, searchQuery]);
 
