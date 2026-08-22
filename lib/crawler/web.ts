@@ -3,7 +3,7 @@
  */
 import * as cheerio from 'cheerio';
 import { v4 as uuidv4 } from 'uuid';
-import { upsertArticle, updateSourceLastCrawled, getSources } from '../db';
+import { upsertArticle, updateSourceLastCrawled, markSourceFailure, getSources } from '../db';
 
 interface WebSource {
   id: string;
@@ -51,6 +51,7 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
 
     if (!response.ok) {
       console.error(`[Web] ${source.name}: HTTP ${response.status}`);
+      markSourceFailure(source.id, `HTTP ${response.status}`);
       return 0;
     }
 
@@ -99,7 +100,9 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
     console.log(`[Web] ${source.name}: ${count} 篇文章`);
     return count;
   } catch (err: any) {
-    console.error(`[Web Error] ${source.name}: ${err.message}`);
+    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+    console.error(`[Web Error] ${source.name}: ${detail}`);
+    markSourceFailure(source.id, detail);
     return 0;
   }
 }

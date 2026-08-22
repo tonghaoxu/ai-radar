@@ -1,6 +1,6 @@
 import RssParser from 'rss-parser';
 import { v4 as uuidv4 } from 'uuid';
-import { upsertArticle, updateSourceLastCrawled, getSources } from '../db';
+import { upsertArticle, updateSourceLastCrawled, markSourceFailure, getSources } from '../db';
 import { isAiRelated } from './keywords';
 
 const parser = new RssParser({
@@ -89,7 +89,10 @@ export async function crawlRssSource(source: {
     console.log(`[RSS] ${source.name}: ${count} 篇文章${filterMsg}`);
     return count;
   } catch (err: any) {
-    console.error(`[RSS Error] ${source.name}: ${err.message}`);
+    // 记录失败原因（含底层 cause，TLS/DNS 类错误的 message 往往只有 'fetch failed'）
+    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+    console.error(`[RSS Error] ${source.name}: ${detail}`);
+    markSourceFailure(source.id, detail);
     return 0;
   }
 }

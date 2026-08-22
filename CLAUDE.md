@@ -40,7 +40,7 @@ SQLite 单例，WAL模式。7张核心表 + 2张FTS5虚拟表：
 
 | 表 | 用途 | 关键字段 |
 |---|------|---------|
-| `sources` | 数据源配置 | `rss_url`, `last_crawled_at` |
+| `sources` | 数据源配置 | `rss_url`, `last_crawled_at`, `fail_count`, `last_error` |
 | `articles` | 聚合文章（统一信息流） | `url` UNIQUE, `category`, `is_starred` |
 | `models` | AI模型信息 | `provider`, `params_b`, `context_window` |
 | `model_benchmarks` | 基准测试分数 | UNIQUE(model_id, benchmark_name) |
@@ -51,6 +51,10 @@ SQLite 单例，WAL模式。7张核心表 + 2张FTS5虚拟表：
 全文搜索使用 `articles_fts` 和 `papers_fts` 两张 FTS5 content-sync 虚拟表，配有完整的 AFTER INSERT/UPDATE/DELETE 触发器维护反向索引。但实际搜索**不走 FTS MATCH**——因为 unicode61 tokenizer 无法处理中文分词，改用 `LIKE '%keyword%'` 实现中英文通用搜索。FTS 表保留作为未来升级到 jieba/tantivy 分词的基础。
 
 所有 CRUD 函数直接从 `lib/db.ts` 导出，API routes 直调，无 ORM 层。
+
+**数据源健康度**：`sources` 表有三个字段用来暴露静默失效的源——`last_crawled_at`（最后一次**成功**）、`last_attempt_at`（最后一次**尝试**）、`fail_count` + `last_error`。抓取成功走 `updateSourceLastCrawled()`（清零失败计数），失败走 `markSourceFailure()`（只推进尝试时间、累加计数、记下错误，**不动** `last_crawled_at`）。两个时间戳拉开差距 = 这个源在持续重试但一直失败。资讯流页面据此显示警告横幅和 ⚠ 标记。
+
+这三列通过 `initTables()` 里的 `PRAGMA table_info` + `ALTER TABLE` 做幂等迁移（`CREATE TABLE IF NOT EXISTS` 不会给已存在的表加列）。
 
 **重要**：`upsertArticle` 的 `ON CONFLICT(url)` 子句**不更新 `published_at`**（仅更新 title/summary 等），以保留文章原始发布时间，防止 GitHub Trending 等无时间字段的数据源每次抓取时时间被重置。
 
@@ -92,7 +96,7 @@ SQLite 单例，WAL模式。7张核心表 + 2张FTS5虚拟表：
 导航栏顺序：**首页 → 资讯流 → 论文 → AI产品 → 模型追踪**
 
 - `/` — **首页（着陆页）**：展示当天最新5条资讯卡片，底部按钮可切换显示6-10条。点击卡片直接跳转原文。页面加载时自动检查是否需要抓取
-- `/news` — **资讯流（完整列表）**：分类筛选 + 来源筛选 + 搜索（URL参数 `?search=`）+ 收藏切换 + 刷新按钮（手动抓取时显示 loading）。导航栏搜索框提交后跳转至此页
+- `/news` — **资讯流（完整列表）**：分类筛选 + 来源筛选 + 搜索（URL参数 `?search=`）+ 收藏切换 + 刷新按钮（手动抓取时显示 loading）。导航栏搜索框提交后跳转至此页。失效数据源会显示警告横幅 + 来源标签加 ⚠
 - `/papers` — 论文追踪：arXiv 分类筛选（cs.AI / cs.CL / cs.CV / cs.LG），分类标签悬停显示全称 tooltip
 - `/products` — AI产品库：分类 + 🔥热门筛选。产品卡片仅保留🔥图标，无💰🧠等装饰图标
 - `/models` — 模型追踪：厂商/开源筛选，卡片含价格和基准
@@ -119,6 +123,24 @@ React Pages (app/*/page.tsx)
 
 去重策略：articles 表 `url` UNIQUE 约束，ON CONFLICT 时更新内容而非插入（但不更新 `published_at`）。
 
+### 资讯流的返回定位（`app/news/page.tsx`）
+
+从 `/article/[id]` 返回 `/news` 时不再弹回顶部。原理是**只解决「首帧要有内容」，滚动恢复交还给平台**：
+
+- 列表 + 筛选条件快照进 sessionStorage 的 `ai-radar-news-cache`
+- 返回时用 `useState` 的**惰性初始化**把缓存同步塞进首帧（放进 `useEffect` 就晚了——那一刻页面还是空的，浏览器想恢复滚动也无处可滚，这正是原来跳顶部的根因）
+- 缓存 5 分钟内不请求，5–30 分钟内后台 `silent` 刷新（不切 `loading`，列表不会被转圈替换掉），超 30 分钟丢弃
+- URL 的 `?search=` 与缓存里的搜索词不一致时拒绝缓存，避免新搜索命中旧结果
+- 详情页的「返回资讯流」用 `router.back()` 而非 `<Link href="/news">`，这样 URL（含 `?search=`）原样回去，也不会多压一条历史
+
+**不要**再自己存取 `window.scrollY`：写过一版，卸载时补写会把好值擦成 0（那一刻详情页 DOM 已挂上，页面高度骤降导致 scrollY 被浏览器钳位到 0），而且会跟框架自带的历史滚动恢复互相打架。
+
+### 本地启动（`start.bat` + `launcher.html`）
+
+桌面快捷方式指向 `start.bat`。它先用默认浏览器打开 `launcher.html`（一个零依赖的本地等待页），再执行 `npm run dev`——因为 Next dev 冷启动要十几秒，直接开 `localhost:3000` 会撞上浏览器的「无法访问」错误页，只能手动刷新。
+
+等待页的探测打的是 `/` 而不是测端口通不通：Next dev 会**先监听端口、再编译页面**，只看端口会在编译完成前就跳转，结果还是白屏；打 `/` 的请求会一直挂到编译结束，顺带预热了首页编译。探测走 fetch(no-cors) → img 两级，另有 40 秒无条件跳转兜底（防止 `file://` 的网络权限被浏览器策略挡掉）。
+
 ## 关键设计决策
 
 - **本地优先**：SQLite文件存储，无外部数据库依赖。`data/` 已加入 `.gitignore`
@@ -128,4 +150,5 @@ React Pages (app/*/page.tsx)
 - **种子数据与抓取分离**：`npm run seed` 只写静态配置（数据源、模型信息），动态资讯由爬虫获取
 - **中文搜索用 LIKE**：因 FTS5 unicode61 tokenizer 无法处理无空格的中文分词，全局搜索改用 `LIKE '%keyword%'` 模式，中英文通吃
 - **arXiv 论文双写**：既写入 `papers` 表供论文页展示，也写入 `articles` 表混入资讯流
+- **源失效要可见**：抓取失败只记录不静默——`last_crawled_at` 只在成功时推进，前端据此显示警告。曾经 36氪 挂了三周才被发现
 - **GitHub 提交需用户指令**：不自动提交，需用户明确指示后才 `git commit`

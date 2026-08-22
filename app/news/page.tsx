@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArticleCard } from '@/components/news/ArticleCard';
 import { CategoryFilter } from '@/components/news/CategoryFilter';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, Loader2, X } from 'lucide-react';
+import { RefreshCw, Loader2, X, AlertTriangle } from 'lucide-react';
 import { useAutoRefresh } from '@/hooks/useAutoRefresh';
 
 interface Article {
@@ -28,44 +28,103 @@ interface Source {
   id: string;
   name: string;
   type: string;
+  last_crawled_at?: string | null;
+  fail_count?: number | null;
+  last_error?: string | null;
+}
+
+// —— 列表状态缓存：让「详情页返回资讯流」能停在原来的位置 ——
+//
+// 滚动位置本身不用我们存。浏览器和 Next 路由本来就会按历史记录恢复滚动，
+// 之前之所以每次都弹回顶部，是因为返回时组件重新挂载、列表是空的——
+// 恢复滚动的那一刻页面根本没有高度，滚无可滚。
+// 所以这里只解决「首帧就要有内容」，滚动恢复交还给平台，别去跟它抢。
+const LIST_CACHE_KEY = 'ai-radar-news-cache';
+const CACHE_TTL = 30 * 60 * 1000;        // 超过 30 分钟的缓存直接丢弃，走正常加载
+const REVALIDATE_AFTER = 5 * 60 * 1000;  // 缓存足够新时连后台刷新都不做，避免列表跳动
+
+interface NewsCache {
+  articles: Article[];
+  sources: Source[];
+  total: number;
+  category: string;
+  sourceId: string;
+  showStarred: boolean;
+  searchQuery: string;
+  savedAt: number;
+}
+
+/**
+ * 读取列表缓存。只有当缓存里的搜索词和当前 URL 的 ?search= 一致时才认，
+ * 否则（比如从导航栏发起了一次新搜索）必须重新拉取。
+ */
+function readListCache(urlSearch: string): NewsCache | null {
+  try {
+    const raw = sessionStorage.getItem(LIST_CACHE_KEY);
+    if (!raw) return null;
+    const cache = JSON.parse(raw) as NewsCache;
+    if (!cache?.articles?.length) return null;
+    if (Date.now() - cache.savedAt > CACHE_TTL) return null;
+    if ((cache.searchQuery || '') !== urlSearch) return null;
+    return cache;
+  } catch {
+    return null;
+  }
 }
 
 function NewsPageContent() {
   const searchParams = useSearchParams();
   const urlSearch = searchParams.get('search') || '';
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [category, setCategory] = useState('全部');
-  const [sourceId, setSourceId] = useState('');
-  const [showStarred, setShowStarred] = useState(false);
-  const [searchQuery, setSearchQuery] = useState(urlSearch);
 
-  const fetchArticles = useCallback(async () => {
-    setLoading(true);
+  // 惰性初始化：缓存必须在首帧就进入 state，列表才能带着完整高度渲染出来，
+  // 平台的滚动恢复才有东西可以滚。放进 useEffect 就晚了——那一刻页面还是空的。
+  const [restored] = useState<NewsCache | null>(() => {
     try {
-      const params = new URLSearchParams();
-      if (category !== '全部') params.set('category', category);
-      if (sourceId) params.set('sourceId', sourceId);
-      if (showStarred) params.set('isStarred', 'true');
-      if (searchQuery) params.set('search', searchQuery);
-      params.set('limit', '100');
-
-      const res = await fetch(`/api/articles?${params}`);
-      const data = await res.json();
-      if (data.articles) {
-        setArticles(data.articles);
-        setTotal(data.total);
-      }
-      if (data.sources) {
-        setSources(data.sources);
-      }
-    } catch (err) {
-      console.error('获取文章失败:', err);
+      return readListCache(urlSearch);
+    } catch {
+      return null; // 服务端渲染时没有 sessionStorage
     }
-    setLoading(false);
-  }, [category, sourceId, showStarred, searchQuery]);
+  });
+
+  const [articles, setArticles] = useState<Article[]>(restored?.articles ?? []);
+  const [sources, setSources] = useState<Source[]>(restored?.sources ?? []);
+  const [total, setTotal] = useState(restored?.total ?? 0);
+  const [loading, setLoading] = useState(!restored);
+  const [category, setCategory] = useState(restored?.category ?? '全部');
+  const [sourceId, setSourceId] = useState(restored?.sourceId ?? '');
+  const [showStarred, setShowStarred] = useState(restored?.showStarred ?? false);
+  const [searchQuery, setSearchQuery] = useState(restored?.searchQuery ?? urlSearch);
+
+  const isFirstLoad = useRef(true);
+
+  const fetchArticles = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      // silent 用于后台刷新：不切 loading，列表就不会被转圈替换掉，滚动位置也就不会丢
+      if (!opts.silent) setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (category !== '全部') params.set('category', category);
+        if (sourceId) params.set('sourceId', sourceId);
+        if (showStarred) params.set('isStarred', 'true');
+        if (searchQuery) params.set('search', searchQuery);
+        params.set('limit', '100');
+
+        const res = await fetch(`/api/articles?${params}`);
+        const data = await res.json();
+        if (data.articles) {
+          setArticles(data.articles);
+          setTotal(data.total);
+        }
+        if (data.sources) {
+          setSources(data.sources);
+        }
+      } catch (err) {
+        console.error('获取文章失败:', err);
+      }
+      setLoading(false);
+    },
+    [category, sourceId, showStarred, searchQuery]
+  );
 
   // 同步 URL search 参数到状态
   useEffect(() => {
@@ -73,8 +132,48 @@ function NewsPageContent() {
   }, [urlSearch]);
 
   useEffect(() => {
+    if (isFirstLoad.current) {
+      isFirstLoad.current = false;
+      // 带着缓存回来的：够新就完全不请求，稍旧才后台静默刷新一次
+      if (restored) {
+        if (Date.now() - restored.savedAt > REVALIDATE_AFTER) {
+          fetchArticles({ silent: true });
+        }
+        return;
+      }
+    }
     fetchArticles();
-  }, [fetchArticles]);
+  }, [fetchArticles, restored]);
+
+  // —— 写缓存：列表或筛选条件变化时快照一次 ——
+  useEffect(() => {
+    if (!articles.length) return;
+    try {
+      const cache: NewsCache = {
+        articles,
+        sources,
+        total,
+        category,
+        sourceId,
+        showStarred,
+        searchQuery,
+        savedAt: Date.now(),
+      };
+      sessionStorage.setItem(LIST_CACHE_KEY, JSON.stringify(cache));
+    } catch {
+      // 配额超了就放弃缓存，不影响正常浏览
+    }
+  }, [articles, sources, total, category, sourceId, showStarred, searchQuery]);
+
+  // 切换筛选条件时回到顶部（首次挂载不算，那是「恢复」场景）
+  const isFirstFilterRun = useRef(true);
+  useEffect(() => {
+    if (isFirstFilterRun.current) {
+      isFirstFilterRun.current = false;
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [category, sourceId, showStarred, searchQuery]);
 
   const handleCrawl = useCallback(async () => {
     const res = await fetch('/api/articles', {
@@ -84,12 +183,12 @@ function NewsPageContent() {
     });
     const data = await res.json();
     if (data.success) {
-      await fetchArticles();
+      await fetchArticles({ silent: true });
     }
   }, [fetchArticles]);
 
   const { lastCrawlTime, autoCrawl, crawling, setAutoCrawl, getTimeAgo } =
-    useAutoRefresh({ onFetch: fetchArticles, onCrawl: handleCrawl });
+    useAutoRefresh({ onFetch: () => fetchArticles({ silent: true }), onCrawl: handleCrawl });
 
   const [manualCrawling, setManualCrawling] = useState(false);
 
@@ -112,7 +211,7 @@ function NewsPageContent() {
         const emptySources = data.results.filter((r: { count: number }) => r.count === 0).length;
         const msg = `抓取完成！共 ${total} 条内容\n\n${sourceDetails}${emptySources > 0 ? `\n\n${emptySources} 个源无新数据` : ''}`;
         alert(msg);
-        fetchArticles();
+        fetchArticles({ silent: true });
       }
     } catch (err) {
       console.error('手动抓取失败:', err);
@@ -131,6 +230,9 @@ function NewsPageContent() {
       prev.map((a) => (a.id === id ? { ...a, is_starred: starred ? 1 : 0 } : a))
     );
   };
+
+  const newsSources = sources.filter((s) => s.type === 'news');
+  const failingSources = newsSources.filter((s) => (s.fail_count ?? 0) > 0);
 
   return (
     <div className="container px-4 py-6 max-w-5xl mx-auto">
@@ -183,6 +285,29 @@ function NewsPageContent() {
 
       <Separator className="mb-4" />
 
+      {/* 数据源失效提示：避免某个源静默挂掉好几周都没人发现 */}
+      {failingSources.length > 0 && (
+        <div className="flex items-start gap-2 mb-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/40 dark:border-amber-900">
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+            <span className="font-medium">{failingSources.length} 个数据源抓取失败</span>
+            <span className="mx-1">·</span>
+            {failingSources.map((s, i) => (
+              <span key={s.id}>
+                {i > 0 && '、'}
+                <span
+                  className="underline decoration-dotted underline-offset-2 cursor-help"
+                  title={`原因: ${s.last_error || '未知错误'}\n连续失败: ${s.fail_count} 次\n上次成功: ${s.last_crawled_at || '从未'}`}
+                >
+                  {s.name}
+                </span>
+              </span>
+            ))}
+            <span className="ml-1 opacity-70">（悬停查看原因）</span>
+          </div>
+        </div>
+      )}
+
       {/* 搜索状态提示 */}
       {searchQuery && (
         <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20">
@@ -214,21 +339,30 @@ function NewsPageContent() {
         >
           全部来源
         </button>
-        {sources
-          .filter((s) => s.type === 'news')
-          .map((s) => (
+        {newsSources.map((s) => {
+          const failing = (s.fail_count ?? 0) > 0;
+          return (
             <button
               key={s.id}
               onClick={() => setSourceId(s.id === sourceId ? '' : s.id)}
+              title={
+                failing
+                  ? `抓取失败: ${s.last_error || '未知错误'}\n连续失败: ${s.fail_count} 次\n上次成功: ${s.last_crawled_at || '从未'}`
+                  : undefined
+              }
               className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
                 s.id === sourceId
                   ? 'bg-primary text-primary-foreground'
-                  : 'bg-secondary hover:bg-secondary/80'
+                  : failing
+                    ? 'bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900'
+                    : 'bg-secondary hover:bg-secondary/80'
               }`}
             >
+              {failing && '⚠ '}
               {s.name}
             </button>
-          ))}
+          );
+        })}
       </div>
 
       <Separator className="mb-4" />

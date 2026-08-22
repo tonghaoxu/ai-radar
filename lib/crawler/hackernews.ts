@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { upsertArticle, updateSourceLastCrawled } from '../db';
+import { upsertArticle, updateSourceLastCrawled, markSourceFailure } from '../db';
 import { isAiRelated } from './keywords';
 
 const HN_TOP_STORIES = 'https://hacker-news.firebaseio.com/v0/topstories.json';
@@ -62,7 +62,9 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
     console.log(`[HackerNews] AI相关: ${count} 篇文章`);
     return count;
   } catch (err: any) {
-    console.error(`[HackerNews Error] ${err.message}`);
+    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+    console.error(`[HackerNews Error] ${detail}`);
+    markSourceFailure('hackernews', detail);
     return 0;
   }
 }

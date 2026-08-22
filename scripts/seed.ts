@@ -10,9 +10,11 @@ const sources = [
   // === 中文AI媒体 ===
   // 机器之心: 全站JS渲染SPA，cheerio无法抓取，暂禁用
   { id: 'jiqizhixin', name: '机器之心', type: 'news', url: 'https://www.jiqizhixin.com', rss_url: '' },
-  // 量子位: WordPress RSS (/feed) 可用 ✅
+  // 量子位: WordPress RSS (/feed)。源本身没问题，但从国内网络环境访问时可能在 TLS 握手阶段失败
+  //（ERR_SSL_WRONG_VERSION_NUMBER），常见于 VPN/加速器劫持了 DNS 或路由。抓取失败会记进 sources.last_error
   { id: 'qbitai', name: '量子位', type: 'news', url: 'https://www.qbitai.com', rss_url: 'https://www.qbitai.com/feed' },
-  // 36氪: 直连RSS可用 ✅
+  // 36氪: 直连 RSS。同上，且 https://36kr.com/feed 本身也可能已下线（走 HTTP 探测返回 404），
+  //       长期失败的话考虑换 RSSHub 路由或直接禁用
   { id: '36kr-ai', name: '36氪AI', type: 'news', url: 'https://36kr.com/information/AI/', rss_url: 'https://36kr.com/feed' },
   // 虎嗅AI: RSS超时+WAF拦截，暂禁用
   { id: 'huxiu-ai', name: '虎嗅AI', type: 'news', url: 'https://www.huxiu.com', rss_url: 'https://www.huxiu.com/rss/0.xml' },

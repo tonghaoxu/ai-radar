@@ -34,7 +34,11 @@ function initTables(db: Database.Database) {
       rss_url TEXT,
       enabled INTEGER DEFAULT 1,
       last_crawled_at TEXT,
-      crawl_interval_min INTEGER DEFAULT 60
+      crawl_interval_min INTEGER DEFAULT 60,
+      -- 健康度追踪：区分「尝试过」和「成功过」，让静默失效的源可见
+      last_attempt_at TEXT,
+      fail_count INTEGER DEFAULT 0,
+      last_error TEXT
     );
 
     -- 聚合文章
@@ -179,6 +183,20 @@ function initTables(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider);
     CREATE INDEX IF NOT EXISTS idx_models_open_source ON models(is_open_source);
   `);
+
+  // 迁移：为已存在的 sources 表补齐健康度字段（CREATE TABLE IF NOT EXISTS 不会改老表）
+  const sourceCols = new Set(
+    (db.prepare('PRAGMA table_info(sources)').all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!sourceCols.has('last_attempt_at')) {
+    db.exec('ALTER TABLE sources ADD COLUMN last_attempt_at TEXT');
+  }
+  if (!sourceCols.has('fail_count')) {
+    db.exec('ALTER TABLE sources ADD COLUMN fail_count INTEGER DEFAULT 0');
+  }
+  if (!sourceCols.has('last_error')) {
+    db.exec('ALTER TABLE sources ADD COLUMN last_error TEXT');
+  }
 
   // 重建 FTS 索引（确保已有数据和新增触发器同步）
   try {
@@ -376,9 +394,32 @@ export function upsertSource(source: {
   });
 }
 
+/** 抓取成功：推进成功时间戳并清零失败计数 */
 export function updateSourceLastCrawled(sourceId: string) {
   const db = getDb();
-  db.prepare("UPDATE sources SET last_crawled_at = datetime('now') WHERE id = ?").run(sourceId);
+  db.prepare(
+    `UPDATE sources SET
+       last_crawled_at = datetime('now'),
+       last_attempt_at = datetime('now'),
+       fail_count = 0,
+       last_error = NULL
+     WHERE id = ?`
+  ).run(sourceId);
+}
+
+/**
+ * 抓取失败：只推进尝试时间戳并累加失败次数，`last_crawled_at` 保持为最后一次
+ * 成功的时间，这样「上次成功抓取」和「一直在重试但一直失败」能被区分开。
+ */
+export function markSourceFailure(sourceId: string, message: string) {
+  const db = getDb();
+  db.prepare(
+    `UPDATE sources SET
+       last_attempt_at = datetime('now'),
+       fail_count = COALESCE(fail_count, 0) + 1,
+       last_error = ?
+     WHERE id = ?`
+  ).run((message || '未知错误').substring(0, 300), sourceId);
 }
 
 // ============ Models CRUD ============

@@ -3,7 +3,7 @@
  */
 import * as cheerio from 'cheerio';
 import { v4 as uuidv4 } from 'uuid';
-import { upsertArticle, updateSourceLastCrawled } from '../db';
+import { upsertArticle, updateSourceLastCrawled, markSourceFailure } from '../db';
 import { isAiRelated } from './keywords';
 
 export async function crawlGitHubTrending(): Promise<number> {
@@ -77,7 +77,9 @@ export async function crawlGitHubTrending(): Promise<number> {
     console.log(`[GitHub] Trending: ${count} 个 AI 仓库`);
     return count;
   } catch (err: any) {
-    console.error(`[GitHub Error]: ${err.message}`);
+    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+    console.error(`[GitHub Error]: ${detail}`);
+    markSourceFailure('github-trending', detail);
     return 0;
   }
 }

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>AI Radar 启动中…</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #0a0a0a;
+    --muted: #737373;
+    --border: #e5e5e5;
+    --accent: #2563eb;
+    --track: #ededed;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0a0a;
+      --fg: #fafafa;
+      --muted: #a1a1a1;
+      --border: #262626;
+      --accent: #60a5fa;
+      --track: #1f1f1f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card { width: 100%; max-width: 420px; text-align: center; }
+  .logo {
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin-bottom: 6px;
+  }
+  .tagline { color: var(--muted); font-size: 13px; margin-bottom: 28px; }
+
+  .spinner {
+    width: 34px; height: 34px;
+    margin: 0 auto 18px;
+    border: 2.5px solid var(--track);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .status { font-size: 14px; margin-bottom: 8px; }
+  .elapsed { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  .bar {
+    height: 3px;
+    background: var(--track);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 22px 0 18px;
+  }
+  .bar > i {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: var(--accent);
+    border-radius: 2px;
+    transition: width 0.4s ease;
+  }
+
+  .hint {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .hint code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 11px;
+    background: var(--track);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  a { color: var(--accent); }
+
+  .manual { margin-top: 10px; opacity: 0.85; }
+  .slow { display: none; margin-top: 14px; }
+  .slow.show { display: block; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">AI Radar</div>
+    <div class="tagline">AI 资讯聚合平台</div>
+
+    <div class="spinner" id="spinner"></div>
+    <div class="status" id="status">正在启动开发服务器…</div>
+    <div class="elapsed" id="elapsed">已等待 0 秒</div>
+
+    <div class="bar"><i id="bar"></i></div>
+
+    <div class="hint">
+      终端正在编译首页，首次启动通常需要 10–20 秒。<br>
+      就绪后本页会<strong>自动跳转</strong>，不用手动刷新。
+      <div class="manual">
+        也可以随时<a href="http://localhost:3000">直接打开 localhost:3000</a>
+      </div>
+      <div class="slow" id="slow">
+        等太久了？看一眼终端窗口里 <code>npm run dev</code> 有没有报错。
+      </div>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var TARGET = 'http://localhost:3000/';
+  var POLL_MS = 800;          // 两次探测之间的间隔
+  var PROBE_TIMEOUT_MS = 60000; // 单次探测上限：编译慢时请求会一直挂着，别太早掐断
+  var SLOW_AFTER_S = 25;      // 超过这个时长就把排查提示放出来
+  var EXPECT_S = 18;          // 进度条的“心理预期”时长
+  // 兜底：万一两种探测都被浏览器策略挡掉（file:// 的网络权限各浏览器不一），
+  // 到点直接跳过去。Next dev 冷启动一般 10-20 秒，40 秒时几乎必然已经就绪，
+  // 所以最坏情况只是多等一会儿，而不是退回“报错页 + 手动刷新”。
+  var FORCE_AFTER_S = 40;
+
+  var started = Date.now();
+  var probing = false;
+  var done = false;
+
+  var $status = document.getElementById('status');
+  var $elapsed = document.getElementById('elapsed');
+  var $bar = document.getElementById('bar');
+  var $slow = document.getElementById('slow');
+
+  function tick() {
+    if (done) return;
+    var s = Math.floor((Date.now() - started) / 1000);
+    $elapsed.textContent = '已等待 ' + s + ' 秒';
+    // 进度条只是安抚性的：逼近 92% 后不再前进，真正到 100% 由跳转决定
+    var pct = Math.min(92, (s / EXPECT_S) * 92);
+    $bar.style.width = pct.toFixed(1) + '%';
+    if (s >= SLOW_AFTER_S) $slow.className = 'slow show';
+    if (s >= FORCE_AFTER_S) go();
+  }
+
+  function go() {
+    if (done) return;
+    done = true;
+    $status.textContent = '已就绪，正在打开…';
+    $bar.style.width = '100%';
+    // replace 而不是 href：不在历史里留下这个等待页，用户按“后退”不会退回来
+    location.replace(TARGET);
+  }
+
+  // 探测手段一：fetch + no-cors。
+  // 打的是 '/' 而不是单纯测端口通不通 —— Next dev 会先监听端口、再编译页面，
+  // 只看端口的话会在编译完成前就跳过去，结果还是白屏。
+  // 这个请求会一直挂到编译结束才返回，顺带把首页编译预热了。
+  function probeFetch() {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, PROBE_TIMEOUT_MS);
+    return fetch(TARGET + '?_probe=' + Date.now(), {
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: ctrl.signal
+    }).then(function () {
+      clearTimeout(timer);
+      return true;
+    }).catch(function () {
+      clearTimeout(timer);
+      return false;
+    });
+  }
+
+  // 探测手段二：图片兜底。
+  // 万一浏览器策略挡掉了 file:// 发起的 fetch，img 请求通常还能过。
+  function probeImage() {
+    return new Promise(function (resolve) {
+      var img = new Image();
+      var timer = setTimeout(function () { img.src = ''; resolve(false); }, 5000);
+      img.onload = function () { clearTimeout(timer); resolve(true); };
+      img.onerror = function () { clearTimeout(timer); resolve(false); };
+      img.src = TARGET + 'favicon.ico?_probe=' + Date.now();
+    });
+  }
+
+  function poll() {
+    if (done || probing) return;
+    probing = true;
+    probeFetch()
+      .then(function (ok) { return ok ? true : probeImage(); })
+      .then(function (ok) {
+        probing = false;
+        if (ok) go();
+      })
+      .catch(function () { probing = false; });
+  }
+
+  setInterval(tick, 250);
+  setInterval(poll, POLL_MS);
+  tick();
+  poll();
+})();
+</script>
+</body>
+</html>

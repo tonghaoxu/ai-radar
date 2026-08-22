@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -29,8 +29,15 @@ interface Article {
 
 export default function ArticleDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
+  // 有历史记录就走 back()：URL（含 ?search=）原样回去，也不会多压一条历史
+  // 点击时才读 history.length，省掉一个 state 和一次 effect
+  const handleBack = () => {
+    if (window.history.length > 1) router.back();
+    else router.push('/news');
+  };
 
   useEffect(() => {
     async function fetchArticle() {
@@ -90,10 +97,13 @@ export default function ArticleDetailPage() {
   return (
     <div className="container px-4 py-6 max-w-3xl mx-auto">
       {/* Back */}
-      <Link href="/news" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4">
+      <button
+        onClick={handleBack}
+        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-4"
+      >
         <ArrowLeft className="h-4 w-4 mr-1" />
         返回资讯流
-      </Link>
+      </button>
 
       <Card>
         <CardHeader>
