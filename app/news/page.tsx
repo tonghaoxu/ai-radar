@@ -47,6 +47,11 @@ interface Source {
 //    所以内容就位后必须由我们再滚一次。
 const CACHE_TTL = 30 * 60 * 1000;        // 超过 30 分钟的缓存直接丢弃，走正常加载
 const WATCHDOG_MS = 500;                 // 恢复滚动后盯住位置的时长，见下面的说明
+
+// 连续失败几次才算「这个源坏了」。任何一次成功都会把 fail_count 清零，
+// 所以 2 次意味着约 20 分钟（抓取间隔 10 分钟）持续失败。
+// 阈值定成 1 会被偶发超时误报——RSS 源偶尔超时一次很正常，报了反而降低信噪比。
+const FAIL_THRESHOLD = 2;
 const REVALIDATE_AFTER = 5 * 60 * 1000;  // 缓存足够新时连后台刷新都不做，避免列表跳动
 
 // 只有「后退回来」才恢复滚动；从导航栏点进资讯流必须停在顶部。
@@ -335,7 +340,7 @@ function NewsPageContent() {
   };
 
   const newsSources = sources.filter((s) => s.type === 'news');
-  const failingSources = newsSources.filter((s) => (s.fail_count ?? 0) > 0);
+  const failingSources = newsSources.filter((s) => (s.fail_count ?? 0) >= FAIL_THRESHOLD);
 
   return (
     <div className="container px-4 py-6 max-w-5xl mx-auto">
@@ -443,7 +448,7 @@ function NewsPageContent() {
           全部来源
         </button>
         {newsSources.map((s) => {
-          const failing = (s.fail_count ?? 0) > 0;
+          const failing = (s.fail_count ?? 0) >= FAIL_THRESHOLD;
           return (
             <button
               key={s.id}

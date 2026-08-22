@@ -54,6 +54,8 @@ SQLite 单例，WAL模式。7张核心表 + 2张FTS5虚拟表：
 
 **数据源健康度**：`sources` 表有三个字段用来暴露静默失效的源——`last_crawled_at`（最后一次**成功**）、`last_attempt_at`（最后一次**尝试**）、`fail_count` + `last_error`。抓取成功走 `updateSourceLastCrawled()`（清零失败计数），失败走 `markSourceFailure()`（只推进尝试时间、累加计数、记下错误，**不动** `last_crawled_at`）。两个时间戳拉开差距 = 这个源在持续重试但一直失败。资讯流页面据此显示警告横幅和 ⚠ 标记。
 
+报警阈值是**连续失败 ≥ 2 次**（`FAIL_THRESHOLD`），不是 1 次。任何一次成功都会把 `fail_count` 清零，所以 2 次意味着约 20 分钟持续失败。定成 1 会被偶发超时误报——RSS 源偶尔超时一次很正常，报了反而拉低信噪比。
+
 这三列通过 `initTables()` 里的 `PRAGMA table_info` + `ALTER TABLE` 做幂等迁移（`CREATE TABLE IF NOT EXISTS` 不会给已存在的表加列）。
 
 **重要**：`upsertArticle` 的 `ON CONFLICT(url)` 子句**不更新 `published_at`**（仅更新 title/summary 等），以保留文章原始发布时间，防止 GitHub Trending 等无时间字段的数据源每次抓取时时间被重置。
