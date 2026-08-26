@@ -157,6 +157,14 @@ React Pages (app/*/page.tsx)
 
 桌面快捷方式指向 `start.bat`。它先用默认浏览器打开 `launcher.html`（一个零依赖的本地等待页），再执行 `npm run dev`——因为 Next dev 冷启动要十几秒，直接开 `localhost:3000` 会撞上浏览器的「无法访问」错误页，只能手动刷新。
 
+**⚠ 别再往启动路径上挂外网依赖。** `app/layout.tsx` 原本用 `next/font/google` 加载 Geist，导致国内网络下启动能卡死。关键在于这句文档常被误读：
+
+> CSS and font files are **downloaded at build time** and self-hosted... **No requests are sent to Google by the browser.**
+
+不向 Google 发请求的是**浏览器**，不是**构建过程**。dev 冷启动必须先编译 `layout.tsx` 才能响应首页，那一步会去 `fonts.googleapis.com` / `fonts.gstatic.com` 下载字体——境外网络几秒完成，国内网络请求挂到超时重试，启动就卡在这里（表现为等待页一直转，最后靠 40 秒兜底才跳）。
+
+已移除，且当时那两个字体**根本没生效**（`--font-geist-sans` 全项目无人引用，`--font-geist-mono` 只被 `--font-mono` 引用而 `font-mono` 类无人使用），页面一直是系统默认字体。以后若要用自定义字体，走自托管（`npm i geist` 或 `next/font/local` + 本地 woff2）。
+
 等待页的探测打的是 `/` 而不是测端口通不通：Next dev 会**先监听端口、再编译页面**，只看端口会在编译完成前就跳转，结果还是白屏；打 `/` 的请求会一直挂到编译结束，顺带预热了首页编译。探测走 fetch(no-cors) → img 两级，另有 40 秒无条件跳转兜底（防止 `file://` 的网络权限被浏览器策略挡掉）。
 
 ## 关键设计决策
@@ -168,5 +176,6 @@ React Pages (app/*/page.tsx)
 - **种子数据与抓取分离**：`npm run seed` 只写静态配置（数据源、模型信息），动态资讯由爬虫获取
 - **中文搜索用 LIKE**：因 FTS5 unicode61 tokenizer 无法处理无空格的中文分词，全局搜索改用 `LIKE '%keyword%'` 模式，中英文通吃
 - **arXiv 论文双写**：既写入 `papers` 表供论文页展示，也写入 `articles` 表混入资讯流
+- **启动路径零外网依赖**：`npm run dev` 冷启动到首页可用，中间不允许出现任何需要访问境外服务的步骤（字体、CDN、远程 schema 等）。抓取数据是启动之后的事，卡住也只影响内容不影响进门
 - **源失效要可见**：抓取失败只记录不静默——`last_crawled_at` 只在成功时推进，前端据此显示警告。曾经 36氪 挂了三周才被发现
 - **GitHub 提交需用户指令**：不自动提交，需用户明确指示后才 `git commit`
