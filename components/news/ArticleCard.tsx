@@ -1,38 +1,29 @@
 'use client';
 
+import { safeHttpUrl } from '@/lib/validation';
+import type { Article } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDistanceToNow } from 'date-fns';
-import { zhCN, enUS } from 'date-fns/locale';
+import { zhCN } from 'date-fns/locale';
 import Link from 'next/link';
+import { useState } from 'react';
 import { Star } from 'lucide-react';
-
-interface Article {
-  id: string;
-  title: string;
-  url: string;
-  summary: string;
-  source_id: string;
-  source_name: string;
-  category: string;
-  language: string;
-  published_at: string;
-  author: string;
-  is_starred: number;
-  is_read: number;
-}
 
 interface ArticleCardProps {
   article: Article;
-  onStar?: (id: string, starred: boolean) => void;
+  onStar?: (id: string, starred: boolean) => Promise<void>;
 }
 
 export function ArticleCard({ article, onStar }: ArticleCardProps) {
-  const timeAgo = publishedAtToTimeAgo(article.published_at, article.language);
+  const [saving, setSaving] = useState(false);
+  const timeAgo = publishedAtToTimeAgo(article.published_at);
 
   return (
-    <Card className={`group hover:shadow-md transition-shadow ${article.is_read ? 'opacity-60' : ''}`}>
+    <Card
+      className={`group hover:shadow-md transition-shadow ${article.is_read ? 'opacity-60' : ''}`}
+    >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
@@ -56,9 +47,7 @@ export function ArticleCard({ article, onStar }: ArticleCardProps) {
 
             {/* Summary */}
             {article.summary && (
-              <p className="text-sm text-muted-foreground line-clamp-2 mb-2">
-                {article.summary}
-              </p>
+              <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{article.summary}</p>
             )}
 
             {/* Footer */}
@@ -72,9 +61,17 @@ export function ArticleCard({ article, onStar }: ArticleCardProps) {
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7"
-                  onClick={(e) => {
+                  disabled={saving || !onStar}
+                  aria-label={article.is_starred ? '取消收藏' : '收藏文章'}
+                  aria-pressed={Boolean(article.is_starred)}
+                  onClick={async (e) => {
                     e.preventDefault();
-                    onStar?.(article.id, !article.is_starred);
+                    setSaving(true);
+                    try {
+                      await onStar?.(article.id, !article.is_starred);
+                    } finally {
+                      setSaving(false);
+                    }
                   }}
                 >
                   <Star
@@ -84,7 +81,7 @@ export function ArticleCard({ article, onStar }: ArticleCardProps) {
                   />
                 </Button>
                 <a
-                  href={article.url}
+                  href={safeHttpUrl(article.url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center rounded-lg border border-border bg-background hover:bg-muted h-7 px-2.5 text-xs"
@@ -100,10 +97,10 @@ export function ArticleCard({ article, onStar }: ArticleCardProps) {
   );
 }
 
-function publishedAtToTimeAgo(dateStr: string, lang: string): string {
+function publishedAtToTimeAgo(dateStr: string | null): string {
   try {
-    const date = new Date(dateStr);
-    const locale = lang === 'zh' ? zhCN : enUS;
+    const date = new Date(dateStr || '');
+    const locale = zhCN;
     return formatDistanceToNow(date, { addSuffix: true, locale });
   } catch {
     return '';

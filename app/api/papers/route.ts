@@ -1,31 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPapers, getPaperCategories } from '@/lib/db';
-
+import { getPapers, getPaperCount, getPaperCategories } from '@/lib/db';
+import { apiError } from '@/lib/api';
+import { integerParam, booleanParam, searchParam } from '@/lib/validation';
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const category = searchParams.get('category') || undefined;
-  const search = searchParams.get('search') || undefined;
-  const isFeatured = searchParams.has('isFeatured')
-    ? searchParams.get('isFeatured') === 'true'
-    : undefined;
-  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 200);
-  const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
-
   try {
-    const [papers, categories] = await Promise.all([
-      Promise.resolve(getPapers({ category, search, isFeatured, limit, offset })),
-      Promise.resolve(getPaperCategories()),
-    ]);
-
+    const params = request.nextUrl.searchParams;
+    const options = {
+      category: params.get('category') || undefined,
+      search: searchParam(params),
+      isFeatured: booleanParam(params, 'isFeatured'),
+      limit: integerParam(params, 'limit', 50, 1, 200),
+      offset: integerParam(params, 'offset', 0, 0, 1_000_000),
+    };
+    const papers = getPapers(options),
+      total = getPaperCount(options);
     return NextResponse.json({
       papers,
-      categories: (categories as any[]).map((c) => c.primary_category),
+      total,
+      hasMore: options.offset + papers.length < total,
+      categories: getPaperCategories().map((c) => c.primary_category),
     });
-  } catch (err: any) {
-    console.error('[Papers]:', err);
-    return NextResponse.json(
-      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
-      { status: 500 }
-    );
+  } catch (error) {
+    return apiError(error);
   }
 }

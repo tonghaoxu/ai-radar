@@ -1,31 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import type { Model } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-
-interface ModelBenchmark {
-  benchmark_name: string;
-  score: number;
-  metric: string;
-}
-
-interface Model {
-  id: string;
-  name: string;
-  provider: string;
-  version: string;
-  params_b: number | null;
-  context_window: number;
-  modalities: string;
-  license_type: string;
-  is_open_source: number;
-  description: string;
-  released_at: string;
-  input_price_per_1m: number | null;
-  output_price_per_1m: number | null;
-  currency: string;
-  free_tier: string | null;
-  benchmarks: ModelBenchmark[];
-}
+import { safeHttpUrl } from '@/lib/validation';
 
 interface ModelCardProps {
   model: Model;
@@ -33,20 +9,25 @@ interface ModelCardProps {
 
 export function ModelCard({ model }: ModelCardProps) {
   const priceSymbol = model.currency === 'CNY' ? '¥' : '$';
-  const isOpen = model.is_open_source === 1;
+  const verified = Boolean(model.source_url);
+  const isOpen = verified && model.is_open_source === 1;
 
-  const topBenchmarks = (model.benchmarks || []).filter(
-    (b) => ['MMLU-Pro', 'HumanEval', 'GPQA Diamond'].includes(b.benchmark_name)
+  const topBenchmarks = (model.benchmarks || []).filter((b) =>
+    ['MMLU-Pro', 'HumanEval', 'GPQA Diamond'].includes(b.benchmark_name),
   );
 
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <CardTitle className="text-lg flex items-center gap-2">
+            <CardTitle className="text-lg flex flex-wrap items-center gap-2 break-words">
               {model.name}
-              {isOpen && <Badge variant="secondary" className="text-xs">开源</Badge>}
+              {isOpen && (
+                <Badge variant="secondary" className="text-xs">
+                  开源
+                </Badge>
+              )}
             </CardTitle>
             <p className="text-sm text-muted-foreground mt-1">{model.provider}</p>
           </div>
@@ -56,38 +37,55 @@ export function ModelCard({ model }: ModelCardProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {!verified && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            历史条目，参数和价格缺少来源，待重新核验。
+          </p>
+        )}
         {/* 关键参数 */}
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          {model.params_b && (
+        {verified && (
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            {model.params_b && (
+              <div>
+                <span className="text-muted-foreground">参数:</span>{' '}
+                <span className="font-medium">{model.params_b}B</span>
+              </div>
+            )}
             <div>
-              <span className="text-muted-foreground">参数:</span>{' '}
-              <span className="font-medium">{model.params_b}B</span>
+              <span className="text-muted-foreground">上下文:</span>{' '}
+              <span className="font-medium">
+                {model.context_window == null
+                  ? '未知'
+                  : model.context_window >= 1000000
+                    ? `${(model.context_window / 1000000).toFixed(1)}M`
+                    : `${(model.context_window / 1000).toFixed(0)}K`}
+              </span>
             </div>
-          )}
-          <div>
-            <span className="text-muted-foreground">上下文:</span>{' '}
-            <span className="font-medium">
-              {model.context_window >= 1000000
-                ? `${(model.context_window / 1000000).toFixed(1)}M`
-                : `${(model.context_window / 1000).toFixed(0)}K`}
-            </span>
+            <div>
+              <span className="text-muted-foreground">许可:</span>{' '}
+              <span className="font-medium text-xs">{model.license_type}</span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">收录:</span>{' '}
+              <span className="font-medium text-xs">{model.released_at?.slice(0, 7)}</span>
+            </div>
           </div>
-          <div>
-            <span className="text-muted-foreground">许可:</span>{' '}
-            <span className="font-medium text-xs">{model.license_type}</span>
-          </div>
-          <div>
-            <span className="text-muted-foreground">发布:</span>{' '}
-            <span className="font-medium text-xs">{model.released_at?.slice(0, 7)}</span>
-          </div>
-        </div>
+        )}
 
         {/* 价格 */}
-        {model.input_price_per_1m != null && (
+        {verified && model.input_price_per_1m != null && (
           <div className="bg-muted rounded-lg p-2 text-sm">
-            <div className="flex justify-between">
-              <span>输入 {priceSymbol}{model.input_price_per_1m}/M tokens</span>
-              <span>输出 {priceSymbol}{model.output_price_per_1m}/M tokens</span>
+            <div className="flex flex-wrap justify-between gap-1">
+              <span>
+                输入 {priceSymbol}
+                {model.input_price_per_1m}/M tokens
+              </span>
+              <span>
+                输出{' '}
+                {model.output_price_per_1m == null
+                  ? '未知'
+                  : `${priceSymbol}${model.output_price_per_1m}/M tokens`}
+              </span>
             </div>
             {model.free_tier && model.free_tier !== '无' && (
               <p className="text-xs text-green-600 mt-0.5">{model.free_tier}</p>
@@ -96,7 +94,7 @@ export function ModelCard({ model }: ModelCardProps) {
         )}
 
         {/* 基准测试 */}
-        {topBenchmarks.length > 0 && (
+        {verified && topBenchmarks.length > 0 && (
           <div className="flex gap-2 flex-wrap">
             {topBenchmarks.map((b) => (
               <Badge key={b.benchmark_name} variant="secondary" className="text-xs">
@@ -106,18 +104,24 @@ export function ModelCard({ model }: ModelCardProps) {
           </div>
         )}
 
-        {/* 描述 — 2行截断 + hover tooltip */}
         {model.description && (
-          <Tooltip>
-            <TooltipTrigger>
-              <p className="text-xs text-muted-foreground line-clamp-2 cursor-default text-left">
-                {model.description}
-              </p>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="max-w-[320px] text-xs leading-relaxed">
-              {model.description}
-            </TooltipContent>
-          </Tooltip>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">查看模型说明</summary>
+            <p className="mt-2 leading-relaxed">{model.description}</p>
+          </details>
+        )}
+        {verified && (
+          <p className="text-xs text-muted-foreground">
+            价格更新：{model.price_updated_at?.slice(0, 10) || '未知'} ·{' '}
+            <a
+              href={safeHttpUrl(model.source_url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              来源
+            </a>
+          </p>
         )}
       </CardContent>
     </Card>

@@ -1,37 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getModels, getAllModelBenchmarks, getModelProviders } from '@/lib/db';
-
+import { apiError } from '@/lib/api';
+import { integerParam, booleanParam, searchParam } from '@/lib/validation';
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const provider = searchParams.get('provider') || undefined;
-  const isOpenSource = searchParams.has('isOpenSource')
-    ? searchParams.get('isOpenSource') === 'true'
-    : undefined;
-  const modality = searchParams.get('modality') || undefined;
-  const limit = parseInt(searchParams.get('limit') || '50');
-
   try {
-    const [models, providers, allBenchmarks] = await Promise.all([
-      Promise.resolve(getModels({ provider, isOpenSource, modality, limit })),
-      Promise.resolve(getModelProviders()),
-      Promise.resolve(getAllModelBenchmarks()),
-    ]);
-
-    // 批量附加基准测试（一次查询替代 N 次查询）
-    const modelsWithBenchmarks = (models as any[]).map((model) => ({
-      ...model,
-      benchmarks: allBenchmarks[model.id] || [],
-    }));
-
-    return NextResponse.json({
-      models: modelsWithBenchmarks,
-      providers: (providers as any[]).map((p) => p.provider),
+    const params = request.nextUrl.searchParams;
+    const limit = integerParam(params, 'limit', 48, 1, 200);
+    const offset = integerParam(params, 'offset', 0, 0, 1_000_000);
+    const models = getModels({
+      provider: params.get('provider') || undefined,
+      isOpenSource: booleanParam(params, 'isOpenSource'),
+      modality: params.get('modality') || undefined,
+      search: searchParam(params),
+      limit: limit + 1,
+      offset,
     });
-  } catch (err: any) {
-    console.error('[Models]:', err);
-    return NextResponse.json(
-      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
-      { status: 500 }
-    );
+    const benchmarks = getAllModelBenchmarks();
+    return NextResponse.json({
+      hasMore: models.length > limit,
+      models: models.slice(0, limit).map((model) => ({
+        ...model,
+        benchmarks: model.source_url ? benchmarks[model.id] || [] : [],
+      })),
+      providers: getModelProviders().map((p) => p.provider),
+    });
+  } catch (error) {
+    return apiError(error);
   }
 }

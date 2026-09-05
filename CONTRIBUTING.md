@@ -21,8 +21,8 @@
 
 1. Fork 本仓库
 2. 创建功能分支：`git checkout -b feat/your-feature`
-3. 确保代码通过 ESLint：`npm run lint`
-4. 确保构建通过：`npm run build`
+3. 运行 `npm run format:check`、`npm run lint`、`npm run typecheck` 和 `npm test`
+4. 运行 `npm run build`；交互改动还需运行 `npm run test:e2e`
 5. 提交时使用清晰的信息（参考已有提交风格）
 6. 推送到你的 fork 并创建 Pull Request
 

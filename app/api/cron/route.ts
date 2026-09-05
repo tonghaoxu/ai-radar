@@ -2,26 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { crawlAll } from '@/lib/crawler';
 import { getStats } from '@/lib/db';
 import { validateApiKey } from '@/lib/auth';
-
+import { apiError, readBody } from '@/lib/api';
+import { ValidationError } from '@/lib/validation';
 export async function POST(request: NextRequest) {
-  const { authorized, response } = validateApiKey(request);
-  if (!authorized) return response;
-
+  const auth = validateApiKey(request);
+  if (!auth.authorized) return auth.response;
   try {
-    const results = await crawlAll();
-    const stats = getStats();
-
+    const body = request.headers.get('content-type')?.includes('application/json')
+      ? await readBody(request)
+      : {};
+    if (body.scope !== undefined && body.scope !== 'all' && body.scope !== 'papers')
+      throw new ValidationError('无效抓取范围');
+    const results = await crawlAll(body.scope === 'papers' ? 'papers' : 'all');
     return NextResponse.json({
       success: true,
       results,
-      stats,
+      stats: getStats(),
       crawledAt: new Date().toISOString(),
     });
-  } catch (err: any) {
-    console.error('[Cron]', err);
-    return NextResponse.json(
-      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
-      { status: 500 }
-    );
+  } catch (error) {
+    return apiError(error);
   }
 }

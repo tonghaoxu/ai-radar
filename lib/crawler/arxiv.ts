@@ -1,5 +1,7 @@
-import { v4 as uuidv4 } from 'uuid';
-import { upsertPaper, upsertArticle } from '../db';
+import { errorMessage } from '../errors';
+import { randomUUID as uuidv4 } from 'node:crypto';
+import * as cheerio from 'cheerio';
+import { upsertPaper, upsertArticle, updateSourceLastCrawled, markSourceFailure } from '../db';
 
 const ARXIV_API = 'https://export.arxiv.org/api/query';
 
@@ -14,15 +16,18 @@ interface ArxivEntry {
   primary_category?: { term: string };
 }
 
-export async function fetchArxivPapers(options: {
-  category?: string;
-  maxResults?: number;
-  sortBy?: 'submittedDate' | 'relevance' | 'lastUpdatedDate';
-} = {}): Promise<number> {
+export async function fetchArxivPapers(
+  options: {
+    category?: string;
+    searchQuery?: string;
+    maxResults?: number;
+    sortBy?: 'submittedDate' | 'relevance' | 'lastUpdatedDate';
+  } = {},
+): Promise<number> {
   const { category = 'cs.AI', maxResults = 30, sortBy = 'submittedDate' } = options;
 
   const params = new URLSearchParams({
-    search_query: `cat:${category}`,
+    search_query: options.searchQuery ?? `cat:${category}`,
     sortBy,
     sortOrder: 'descending',
     max_results: maxResults.toString(),
@@ -37,8 +42,7 @@ export async function fetchArxivPapers(options: {
     });
 
     if (!response.ok) {
-      console.error(`[arXiv Error] ${category}: HTTP ${response.status} ${response.statusText}`);
-      return 0;
+      throw new Error(`arXiv HTTP ${response.status}`);
     }
 
     const xml = await response.text();
@@ -46,12 +50,16 @@ export async function fetchArxivPapers(options: {
 
     // 简单 XML 解析（避免额外依赖）
     const entries = parseArxivXml(xml);
+    if (!entries.length) throw new Error('arXiv 返回了空或无效的论文列表');
     let count = 0;
 
     for (const entry of entries) {
       try {
         const paperId = uuidv4();
-        const arxivId = entry.id.replace('http://arxiv.org/abs/', '').trim();
+        const arxivId = entry.id
+          .replace(/^https?:\/\/arxiv\.org\/abs\//, '')
+          .replace(/v\d+$/, '')
+          .trim();
         if (!arxivId) continue;
 
         // 存为 paper 记录
@@ -59,9 +67,9 @@ export async function fetchArxivPapers(options: {
           id: paperId,
           arxiv_id: arxivId,
           title: entry.title,
-          authors: entry.author?.map((a: any) => a.name).join(', ') || '',
+          authors: entry.author?.map((a) => a.name).join(', ') || '',
           abstract: entry.summary?.substring(0, 2000) || '',
-          categories: entry.category?.map((c: any) => c.term).join(',') || '',
+          categories: entry.category?.map((c) => c.term).join(',') || '',
           primary_category: entry.primary_category?.term || category,
           published_at: entry.published,
           pdf_url: `https://arxiv.org/pdf/${arxivId}`,
@@ -72,99 +80,84 @@ export async function fetchArxivPapers(options: {
           id: uuidv4(),
           source_id: 'arxiv',
           title: `[论文] ${entry.title}`,
-          url: entry.link || `https://arxiv.org/abs/${arxivId}`,
+          url: `https://arxiv.org/abs/${arxivId}`,
           summary: entry.summary?.substring(0, 500) || '',
-          author: entry.author?.map((a: any) => a.name).slice(0, 3).join(', ') || '',
+          author:
+            entry.author
+              ?.map((a) => a.name)
+              .slice(0, 3)
+              .join(', ') || '',
           published_at: entry.published,
           category: '学术研究',
           language: 'en',
         });
 
         count++;
-      } catch {
-        // 单篇失败跳过，继续处理下一篇
+      } catch (error) {
+        console.error('[arXiv] 论文写入失败', error);
       }
     }
 
     console.log(`[arXiv] ${category}: ${count} 篇论文`);
     return count;
-  } catch (err: any) {
-    console.error(`[arXiv Error] ${category}: ${err.message}`);
-    return 0;
+  } catch (err) {
+    console.error(`[arXiv Error] ${category}: ${errorMessage(err)}`);
+    throw err;
   }
 }
 
 export async function crawlAllArxiv(): Promise<number> {
-  const categories = ['cs.AI', 'cs.CL', 'cs.CV', 'cs.LG'];
-
-  const counts = await Promise.all(
-    categories.map((cat) => fetchArxivPapers({ category: cat, maxResults: 15 }))
-  );
-
-  return counts.reduce((sum, c) => sum + c, 0);
-}
-
-// 轻量 XML 解析（提取 <entry> 中的关键字段）
-function parseArxivXml(xml: string): ArxivEntry[] {
-  const entries: ArxivEntry[] = [];
-  const entryRegex = /<(?:atom:)?entry>([\s\S]*?)<\/(?:atom:)?entry>/g;
-  let match;
-
-  while ((match = entryRegex.exec(xml)) !== null) {
-    const content = match[1];
-    entries.push({
-      id: extractTag(content, 'id'),
-      title: cleanText(extractTag(content, 'title')),
-      summary: cleanText(extractTag(content, 'summary')),
-      author: extractAuthors(content),
-      published: extractTag(content, 'published'),
-      link: extractLink(content),
-      category: extractCategories(content),
-      primary_category: extractPrimaryCategory(content),
+  // 一次 OR 查询替代四路并发，减少 arXiv 限流及跨分类重复处理。
+  try {
+    const count = await fetchArxivPapers({
+      searchQuery: 'cat:cs.AI OR cat:cs.CL OR cat:cs.CV OR cat:cs.LG',
+      maxResults: 60,
     });
+    updateSourceLastCrawled('arxiv');
+    return count;
+  } catch (error) {
+    markSourceFailure('arxiv', errorMessage(error));
+    throw error;
   }
-
-  return entries;
 }
 
-function extractTag(xml: string, tag: string): string {
-  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
-  const match = regex.exec(xml);
-  return match ? match[1].trim() : '';
-}
-
-function cleanText(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim();
-}
-
-function extractAuthors(xml: string): { name: string }[] {
-  const authors: { name: string }[] = [];
-  const regex = /<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/g;
-  let match;
-  while ((match = regex.exec(xml)) !== null) {
-    authors.push({ name: match[1].trim() });
-  }
-  return authors;
-}
-
-function extractLink(xml: string): string {
-  const regex = /<link[^>]*href="([^"]*)"[^>]*\/>/i;
-  const match = regex.exec(xml);
-  return match ? match[1] : '';
-}
-
-function extractCategories(xml: string): { term: string }[] {
-  const cats: { term: string }[] = [];
-  const regex = /<category[^>]*term="([^"]*)"[^>]*\/>/g;
-  let match;
-  while ((match = regex.exec(xml)) !== null) {
-    cats.push({ term: match[1] });
-  }
-  return cats;
-}
-
-function extractPrimaryCategory(xml: string): { term: string } | undefined {
-  const regex = /<arxiv:primary_category[^>]*term="([^"]*)"[^>]*\/>/i;
-  const match = regex.exec(xml);
-  return match ? { term: match[1] } : undefined;
+export function parseArxivXml(xml: string): ArxivEntry[] {
+  const $ = cheerio.load(xml, { xmlMode: true });
+  const tag = (name: string) => (index: number, el: unknown) =>
+    !!el &&
+    typeof el === 'object' &&
+    'name' in el &&
+    typeof el.name === 'string' &&
+    el.name.split(':').pop() === name;
+  return $('*')
+    .filter(tag('entry'))
+    .toArray()
+    .map((el) => {
+      const entry = $(el);
+      const text = (name: string) =>
+        entry.children().filter(tag(name)).first().text().replace(/\s+/g, ' ').trim();
+      return {
+        id: text('id'),
+        title: text('title'),
+        summary: text('summary'),
+        published: text('published'),
+        author: entry
+          .children()
+          .filter(tag('author'))
+          .toArray()
+          .map((a) => ({ name: $(a).children().filter(tag('name')).text().trim() })),
+        category: entry
+          .children()
+          .filter(tag('category'))
+          .toArray()
+          .map((c) => ({ term: $(c).attr('term') || '' })),
+        primary_category: {
+          term: entry.children().filter(tag('primary_category')).attr('term') || '',
+        },
+        link:
+          entry.children().filter(tag('link')).filter('[rel="alternate"]').attr('href') ||
+          text('id'),
+      };
+    })
+    .filter((entry) => entry.id && entry.title);
 }

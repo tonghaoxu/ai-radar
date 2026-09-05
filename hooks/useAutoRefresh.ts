@@ -1,101 +1,52 @@
 'use client';
-
-import { useState, useEffect, useCallback, useRef } from 'react';
-
-const CRAWL_INTERVAL = 10 * 60 * 1000;   // 10分钟自动全量抓取
-const SESSION_KEY = 'ai-radar-last-crawl-check';
-
-interface UseAutoRefreshOptions {
-  onFetch: () => Promise<void>;
-  onCrawl: () => Promise<void>;
-}
-
-export function useAutoRefresh({ onFetch, onCrawl }: UseAutoRefreshOptions) {
-  const [lastCrawlTime, setLastCrawlTime] = useState<Date | null>(null);
-  const [autoCrawl, setAutoCrawl] = useState(true);
-  const [crawling, setCrawling] = useState(false);
-
-  // 用 ref 保持回调引用最新，避免闭包过期
-  const onFetchRef = useRef(onFetch);
-  const onCrawlRef = useRef(onCrawl);
-  onFetchRef.current = onFetch;
-  onCrawlRef.current = onCrawl;
-
-  // 页面加载时自动检查是否需要抓取（sessionStorage 防重，10分钟内不重复检查）
+import { useState, useEffect, useEffectEvent } from 'react';
+const INTERVAL = 10 * 60 * 1000;
+const KEY = 'ai-radar-auto-refresh';
+/** 自动刷新读取列表；抓取由用户操作或服务端定时任务负责。 */
+export function useAutoRefresh({ onFetch }: { onFetch: () => Promise<void> }) {
+  const [autoCrawl, setEnabled] = useState(true);
+  const [lastCrawlTime, setLastTime] = useState<Date | null>(null);
+  const refresh = useEffectEvent(async () => {
+    if (document.visibilityState !== 'visible') return;
+    try {
+      await onFetch();
+      setLastTime(new Date());
+    } catch {
+      /* 页面负责错误提示 */
+    }
+  });
   useEffect(() => {
-    const lastCheck = sessionStorage.getItem(SESSION_KEY);
-    if (lastCheck && Date.now() - parseInt(lastCheck) < CRAWL_INTERVAL) {
-      return; // 10分钟内已检查过，跳过
-    }
-
-    // 立即占位，防止首页和资讯流并发时重复触发爬虫
-    sessionStorage.setItem(SESSION_KEY, String(Date.now()));
-
-    async function checkAndCrawl() {
+    const timer = setTimeout(() => {
       try {
-        const res = await fetch('/api/articles?limit=1');
-        const data = await res.json();
-        const lastArticle = data.articles?.[0];
-        if (lastArticle?.crawled_at) {
-          const lastCrawl = new Date(lastArticle.crawled_at).getTime();
-          const now = Date.now();
-          if (now - lastCrawl > CRAWL_INTERVAL) {
-            console.log('[自动] 距上次抓取超过10分钟，自动触发');
-            const done = await doCrawl();
-            if (done) await onFetchRef.current();
-          }
-        }
-      } catch {
-        // 静默失败
-      }
-    }
-    checkAndCrawl();
+        setEnabled(localStorage.getItem(KEY) !== 'false');
+      } catch {}
+    }, 0);
+    const sync = (event: StorageEvent) => {
+      if (event.key === KEY) setEnabled(event.newValue !== 'false');
+    };
+    window.addEventListener('storage', sync);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('storage', sync);
+    };
   }, []);
-
-  // 长周期：自动全量抓取
   useEffect(() => {
     if (!autoCrawl) return;
-
-    const interval = setInterval(async () => {
-      console.log('[自动] 定时全量抓取触发');
-      const done = await doCrawl();
-      if (done) await onFetchRef.current();
-    }, CRAWL_INTERVAL);
-    return () => clearInterval(interval);
+    const timer = setInterval(() => {
+      void refresh();
+    }, INTERVAL);
+    return () => clearInterval(timer);
   }, [autoCrawl]);
-
-  const doCrawl = useCallback(async (): Promise<boolean> => {
-    setCrawling(true);
-    try {
-      await onCrawlRef.current();
-      setLastCrawlTime(new Date());
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setCrawling(false);
-    }
-  }, []);
-
-  const manualCrawl = useCallback(async () => {
-    const done = await doCrawl();
-    if (done) await onFetchRef.current();
-  }, [doCrawl]);
-
-  const getTimeAgo = useCallback((date: Date | null): string => {
-    if (!date) return '暂无';
-    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-    if (seconds < 60) return '刚刚';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟前`;
-    return `${Math.floor(seconds / 3600)}小时前`;
-  }, []);
-
   return {
-    lastCrawlTime,
     autoCrawl,
-    crawling,
-    setAutoCrawl,
-    manualCrawl,
-    getTimeAgo,
+    lastCrawlTime,
+    setAutoCrawl: (enabled: boolean) => {
+      setEnabled(enabled);
+      try {
+        localStorage.setItem(KEY, String(enabled));
+      } catch {}
+    },
+    getTimeAgo: (date: Date | null) =>
+      date ? `${Math.max(0, Math.floor((Date.now() - date.getTime()) / 60_000))} 分钟前` : '暂无',
   };
 }

@@ -1,29 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getProducts, getProductCategories } from '@/lib/db';
-
+import { apiError } from '@/lib/api';
+import { integerParam, booleanParam, searchParam } from '@/lib/validation';
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const category = searchParams.get('category') || undefined;
-  const isHot = searchParams.has('isHot')
-    ? searchParams.get('isHot') === 'true'
-    : undefined;
-  const limit = parseInt(searchParams.get('limit') || '100');
-
   try {
-    const [products, categories] = await Promise.all([
-      Promise.resolve(getProducts({ category, isHot, limit })),
-      Promise.resolve(getProductCategories()),
-    ]);
-
-    return NextResponse.json({
-      products,
-      categories: (categories as any[]).map((c) => c.category),
+    const params = request.nextUrl.searchParams;
+    const limit = integerParam(params, 'limit', 48, 1, 200);
+    const offset = integerParam(params, 'offset', 0, 0, 1_000_000);
+    const products = getProducts({
+      category: params.get('category') || undefined,
+      isHot: booleanParam(params, 'isHot'),
+      search: searchParam(params),
+      limit: limit + 1,
+      offset,
     });
-  } catch (err: any) {
-    console.error('[Products]:', err);
-    return NextResponse.json(
-      { error: process.env.NODE_ENV === 'development' ? err.message : '服务器内部错误' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      products: products.slice(0, limit),
+      hasMore: products.length > limit,
+      categories: getProductCategories().map((c) => c.category),
+    });
+  } catch (error) {
+    return apiError(error);
   }
 }

@@ -1,8 +1,9 @@
+import { errorDetail } from '../errors';
 /**
  * GitHub Trending 抓取器 — 用 cheerio 抓取当日热门 AI 仓库
  */
 import * as cheerio from 'cheerio';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 import { upsertArticle, updateSourceLastCrawled, markSourceFailure } from '../db';
 import { isAiRelated } from './keywords';
 
@@ -10,15 +11,15 @@ export async function crawlGitHubTrending(): Promise<number> {
   try {
     const response = await fetch('https://github.com/trending?since=daily', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
       },
       signal: AbortSignal.timeout(20000),
     });
 
     if (!response.ok) {
-      console.error(`[GitHub] HTTP ${response.status}`);
-      return 0;
+      throw new Error(`GitHub HTTP ${response.status}`);
     }
 
     const html = await response.text();
@@ -32,7 +33,6 @@ export async function crawlGitHubTrending(): Promise<number> {
 
         // 仓库名: h2.h3 a 中的文本（格式: "owner / repo"）
         const nameEl = $el.find('h2.h3 a');
-        const fullName = nameEl.text().trim().replace(/\s+/g, '');
         // 提取 owner/repo
         const href = nameEl.attr('href') || '';
         const repoPath = href.replace(/^\//, ''); // owner/repo
@@ -73,13 +73,14 @@ export async function crawlGitHubTrending(): Promise<number> {
       }
     });
 
+    if ($('article.Box-row').length === 0) throw new Error('GitHub 页面结构已变化');
     updateSourceLastCrawled('github-trending');
     console.log(`[GitHub] Trending: ${count} 个 AI 仓库`);
     return count;
-  } catch (err: any) {
-    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+  } catch (err) {
+    const detail = errorDetail(err);
     console.error(`[GitHub Error]: ${detail}`);
     markSourceFailure('github-trending', detail);
-    return 0;
+    throw err;
   }
 }

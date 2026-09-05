@@ -23,18 +23,18 @@ export function Navbar() {
   const pathname = usePathname();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      router.push(`/news?search=${encodeURIComponent(searchQuery.trim())}`);
+      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-14 items-center justify-between px-4">
+      <div className="container mx-auto flex h-14 items-center justify-between px-4">
         {/* Logo */}
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-2 font-bold text-lg">
@@ -50,11 +50,12 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={pathname === item.href ? 'page' : undefined}
                 className={cn(
                   buttonVariants({
                     variant: pathname === item.href ? 'secondary' : 'ghost',
                     size: 'sm',
-                  })
+                  }),
                 )}
               >
                 {item.label}
@@ -69,31 +70,38 @@ export function Navbar() {
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             title="切换暗色模式"
+            aria-label="切换暗色模式"
           >
             <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
           </Button>
           <form onSubmit={handleSearch} className="flex items-center gap-2">
-          <Input
-            type="search"
-            placeholder="搜索AI资讯..."
-            className="w-[160px] md:w-[240px] h-8 text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-          <Button type="submit" size="sm" variant="outline" className="h-8">
-            搜索
-          </Button>
-        </form>
+            <Input
+              type="search"
+              placeholder="搜索资讯、论文、模型…"
+              aria-label="全站搜索"
+              maxLength={200}
+              className="w-[135px] sm:w-[160px] md:w-[240px] h-8 text-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Button type="submit" size="sm" variant="outline" className="h-8">
+              搜索
+            </Button>
+          </form>
         </div>
       </div>
 
       {/* Mobile Nav */}
       <nav className="md:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto">
         {navItems.map((item) => (
-          <Link key={item.href} href={item.href}>
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={pathname === item.href ? 'page' : undefined}
+          >
             <Badge
               variant={pathname === item.href ? 'default' : 'outline'}
               className="whitespace-nowrap"

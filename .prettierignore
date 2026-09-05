@@ -1,0 +1,12 @@
+node_modules
+.next
+.npm-cache
+.e2e-work
+test-results
+playwright-report
+package-lock.json
+.audit-*
+audit-*
+data
+public
+AGENTS.md

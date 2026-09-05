@@ -43,3 +43,12 @@ next-env.d.ts
 # database
 /data/*
 !/data/products.json
+
+!.env.example
+/.npm-cache/
+/audit-*.json
+/audit-*.txt
+/.audit-*
+/playwright-report/
+/test-results/
+/.e2e-work/

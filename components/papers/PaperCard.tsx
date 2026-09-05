@@ -1,19 +1,8 @@
 import { useMemo } from 'react';
+import { safeHttpUrl } from '@/lib/validation';
+import type { Paper } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-
-interface Paper {
-  id: string;
-  arxiv_id: string;
-  title: string;
-  authors: string;
-  abstract: string;
-  categories: string;
-  primary_category: string;
-  published_at: string;
-  pdf_url: string;
-  code_url: string;
-}
 
 interface PaperCardProps {
   paper: Paper;
@@ -21,19 +10,24 @@ interface PaperCardProps {
 
 export function PaperCard({ paper }: PaperCardProps) {
   const mainCategories = useMemo(
-    () => (paper.categories || '').split(',').slice(0, 3).map((c) => c.trim()),
-    [paper.categories]
+    () =>
+      (paper.categories || '')
+        .split(',')
+        .slice(0, 3)
+        .map((c) => c.trim()),
+    [paper.categories],
   );
 
   const authorsList = useMemo(
-    () => (paper.authors || '').split(',').slice(0, 3).map((a) => a.trim()),
-    [paper.authors]
+    () =>
+      (paper.authors || '')
+        .split(',')
+        .slice(0, 3)
+        .map((a) => a.trim()),
+    [paper.authors],
   );
 
-  const totalAuthors = useMemo(
-    () => (paper.authors || '').split(',').length,
-    [paper.authors]
-  );
+  const totalAuthors = useMemo(() => (paper.authors || '').split(',').length, [paper.authors]);
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -54,7 +48,7 @@ export function PaperCard({ paper }: PaperCardProps) {
 
             {/* 标题 */}
             <a
-              href={paper.pdf_url || `https://arxiv.org/abs/${paper.arxiv_id}`}
+              href={safeHttpUrl(`https://arxiv.org/abs/${paper.arxiv_id}`)}
               target="_blank"
               rel="noopener noreferrer"
               className="hover:underline"
@@ -74,15 +68,13 @@ export function PaperCard({ paper }: PaperCardProps) {
 
             {/* 摘要 */}
             {paper.abstract && (
-              <p className="text-sm text-muted-foreground line-clamp-3 mb-2">
-                {paper.abstract}
-              </p>
+              <p className="text-sm text-muted-foreground line-clamp-3 mb-2">{paper.abstract}</p>
             )}
 
             {/* 链接 */}
             <div className="flex items-center gap-2 text-xs">
               <a
-                href={paper.pdf_url || `https://arxiv.org/abs/${paper.arxiv_id}`}
+                href={safeHttpUrl(`https://arxiv.org/abs/${paper.arxiv_id}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:underline"
@@ -91,7 +83,7 @@ export function PaperCard({ paper }: PaperCardProps) {
               </a>
               {paper.code_url && (
                 <a
-                  href={paper.code_url}
+                  href={safeHttpUrl(paper.code_url)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-green-600 hover:underline"

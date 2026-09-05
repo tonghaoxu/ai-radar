@@ -1,4 +1,5 @@
-import { v4 as uuidv4 } from 'uuid';
+import { errorDetail } from '../errors';
+import { randomUUID as uuidv4 } from 'node:crypto';
 import { upsertArticle, updateSourceLastCrawled, markSourceFailure } from '../db';
 import { isAiRelated } from './keywords';
 
@@ -11,7 +12,9 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
     const response = await fetch(HN_TOP_STORIES, {
       signal: AbortSignal.timeout(10000),
     });
+    if (!response.ok) throw new Error(`Hacker News HTTP ${response.status}`);
     const ids: number[] = await response.json();
+    if (!Array.isArray(ids)) throw new Error('Hacker News 返回了无效数据');
 
     // 只处理前 N 个，分批并发（每批 5 个）
     const topIds = ids.slice(0, maxStories);
@@ -37,7 +40,7 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
           } catch {
             return null;
           }
-        })
+        }),
       );
 
       for (const item of results) {
@@ -61,10 +64,10 @@ export async function crawlHackerNews(maxStories = 50): Promise<number> {
     updateSourceLastCrawled('hackernews');
     console.log(`[HackerNews] AI相关: ${count} 篇文章`);
     return count;
-  } catch (err: any) {
-    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+  } catch (err) {
+    const detail = errorDetail(err);
     console.error(`[HackerNews Error] ${detail}`);
     markSourceFailure('hackernews', detail);
-    return 0;
+    throw err;
   }
 }

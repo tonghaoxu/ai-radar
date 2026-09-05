@@ -1,54 +1,42 @@
-/**
- * API 路由验证工具
- *
- * 验证逻辑（优先级从高到低）：
- * 1. 未设置 CRON_SECRET → 本地开发模式，全部放行
- * 2. 已设置 CRON_SECRET：
- *    a. 同源请求（Origin 匹配 Host）→ 自动放行（浏览器前端调用）
- *    b. 请求头 x-api-key 匹配 → 放行（外部 cron/脚本调用）
- *    c. 其他 → 401
- */
-
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 
-export interface AuthResult {
-  authorized: boolean;
-  response?: NextResponse;
-}
+type AuthResult =
+  { authorized: true; response?: never } | { authorized: false; response: NextResponse };
 
 export function validateApiKey(request: NextRequest): AuthResult {
   const secret = process.env.CRON_SECRET;
-
-  // 未设置密钥：本地开发模式，放行
-  if (!secret) {
-    return { authorized: true };
+  if (secret) {
+    const supplied =
+      request.headers.get('x-api-key') ||
+      request.headers.get('authorization')?.replace(/^Bearer /, '') ||
+      '';
+    const expected = Buffer.from(secret);
+    const actual = Buffer.from(supplied);
+    if (actual.length === expected.length && timingSafeEqual(actual, expected))
+      return { authorized: true };
+    return {
+      authorized: false,
+      response: NextResponse.json({ error: '此操作需要有效的管理密钥' }, { status: 401 }),
+    };
   }
-
-  // 同源请求自动放行（浏览器前端调用自己的 API）
+  // 无密钥仅支持本机开发；Origin 只能做 CSRF 检查，不能充当身份认证。
+  const url = new URL(request.url);
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   const origin = request.headers.get('origin');
-  const host = request.headers.get('host');
-  if (origin && host) {
-    try {
-      const originHost = new URL(origin).host;
-      if (originHost === host) {
-        return { authorized: true };
-      }
-    } catch {
-      // URL 解析失败，继续检查 x-api-key
-    }
-  }
-
-  // 检查 API Key
-  const apiKey = request.headers.get('x-api-key');
-  if (apiKey === secret) {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    local &&
+    (!origin || origin === url.origin) &&
+    request.headers.get('sec-fetch-site') !== 'cross-site'
+  ) {
     return { authorized: true };
   }
-
   return {
     authorized: false,
     response: NextResponse.json(
-      { error: '未授权访问。同源请求自动放行，外部调用请在请求头中提供有效的 x-api-key。' },
-      { status: 401 }
+      { error: '请在服务端配置管理密钥 CRON_SECRET 后再执行写入操作' },
+      { status: 503 },
     ),
   };
 }

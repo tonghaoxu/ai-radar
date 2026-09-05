@@ -1,5 +1,6 @@
+import { errorDetail } from '../errors';
 import RssParser from 'rss-parser';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 import { upsertArticle, updateSourceLastCrawled, markSourceFailure, getSources } from '../db';
 import { isAiRelated } from './keywords';
 
@@ -7,12 +8,12 @@ const parser = new RssParser({
   timeout: 15000,
   headers: {
     'User-Agent': 'AI-News-Hub/1.0 (Personal Use)',
-    'Accept': 'application/rss+xml, application/xml, text/xml',
+    Accept: 'application/rss+xml, application/xml, text/xml',
   },
 });
 
 // 分类推断：根据标题和来源推断文章分类
-function inferCategory(title: string, sourceName: string): string {
+function inferCategory(title: string): string {
   const t = title.toLowerCase();
   if (/大模型|llm|gpt|claude|gemini|deepseek|通义|文心|豆包|模型|model/i.test(t)) return '大模型';
   if (/芯片|gpu|nvidia|amd|算力|h100|b200|huawei|昇腾/i.test(t)) return '算力芯片';
@@ -56,14 +57,16 @@ export async function crawlRssSource(source: {
     for (const item of feed.items || []) {
       const title = item.title?.trim() || '无标题';
       const url = item.link?.trim();
-      const publishedAt = item.isoDate
-        || (item.pubDate ? safeParseDate(item.pubDate) : null)
-        || new Date().toISOString();
+      const publishedAt =
+        item.isoDate ||
+        (item.pubDate ? safeParseDate(item.pubDate) : null) ||
+        new Date().toISOString();
 
       if (!url) continue;
 
       // 所有源均过 AI 关键词（中英文），避免财经/股票等无关内容混入
-      if (!isAiRelated(title)) {
+      const dedicatedFeed = ['techcrunch-ai', 'venturebeat-ai', 'mit-tr-ai'].includes(source.id);
+      if (!dedicatedFeed && !isAiRelated(title)) {
         filteredCount++;
         continue;
       }
@@ -74,11 +77,14 @@ export async function crawlRssSource(source: {
         source_id: source.id,
         title,
         url,
-        summary: item.contentSnippet?.substring(0, 500) || stripHtml(item.content)?.substring(0, 500) || '',
+        summary:
+          item.contentSnippet?.substring(0, 500) ||
+          stripHtml(item.content)?.substring(0, 500) ||
+          '',
         content_snippet: stripHtml(item.content)?.substring(0, 1000) || '',
         author: item.creator || '',
         published_at: publishedAt,
-        category: inferCategory(title, source.name),
+        category: inferCategory(title),
         language: inferLanguage(title),
       });
       count++;
@@ -88,9 +94,9 @@ export async function crawlRssSource(source: {
     const filterMsg = filteredCount > 0 ? ` (过滤掉 ${filteredCount} 篇非AI)` : '';
     console.log(`[RSS] ${source.name}: ${count} 篇文章${filterMsg}`);
     return count;
-  } catch (err: any) {
+  } catch (err) {
     // 记录失败原因（含底层 cause，TLS/DNS 类错误的 message 往往只有 'fetch failed'）
-    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+    const detail = errorDetail(err);
     console.error(`[RSS Error] ${source.name}: ${detail}`);
     markSourceFailure(source.id, detail);
     return 0;
@@ -112,14 +118,19 @@ function stripHtml(html?: string): string {
     .replace(/&#x27;/g, "'");
 }
 
-export async function crawlAllRss(): Promise<{ source: string; count: number }[]> {
-  const sources = getSources('news') as any[];
+export async function crawlAllRss(): Promise<{ source: string; count: number; error?: string }[]> {
+  const sources = getSources('news');
   const results = [];
 
   for (const source of sources) {
     if (!source.rss_url) continue;
-    const count = await crawlRssSource(source);
-    results.push({ source: source.name, count });
+    const count = await crawlRssSource({ ...source, rss_url: source.rss_url });
+    const current = getSources('news').find((s) => s.id === source.id);
+    results.push({
+      source: source.name,
+      count,
+      ...(current?.last_error ? { error: current.last_error } : {}),
+    });
   }
 
   return results;

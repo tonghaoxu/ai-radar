@@ -1,8 +1,10 @@
+import { isAiRelated } from './keywords';
+import { errorDetail } from '../errors';
 /**
  * 网页抓取器 — 对没有 RSS 的中文 AI 媒体用 cheerio 抓取首页文章列表
  */
 import * as cheerio from 'cheerio';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID as uuidv4 } from 'node:crypto';
 import { upsertArticle, updateSourceLastCrawled, markSourceFailure, getSources } from '../db';
 
 interface WebSource {
@@ -11,11 +13,11 @@ interface WebSource {
   url: string;
   /** CSS 选择器配置 */
   selector?: {
-    article: string;       // 文章容器
-    title: string;         // 标题（相对 article）
-    link: string;          // 链接（相对 article）
-    time?: string;         // 时间（相对 article）
-    summary?: string;      // 摘要（相对 article）
+    article: string; // 文章容器
+    title: string; // 标题（相对 article）
+    link: string; // 链接（相对 article）
+    time?: string; // 时间（相对 article）
+    summary?: string; // 摘要（相对 article）
   };
 }
 
@@ -42,8 +44,9 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
   try {
     const response = await fetch(source.url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
       },
       signal: AbortSignal.timeout(15000),
@@ -71,12 +74,15 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
         const titleEl = $el.find(config.title).first();
         const title = titleEl.text().trim();
         const link = extractUrl($el.find(config.link).first().attr('href'), source.url);
-        const timeText = config.time ? $el.find(config.time).first().text().trim() || $el.find(config.time).first().attr('datetime') : '';
+        const timeText = config.time
+          ? $el.find(config.time).first().text().trim() ||
+            $el.find(config.time).first().attr('datetime')
+          : '';
         const summary = config.summary ? $el.find(config.summary).first().text().trim() : '';
 
         if (!title || title.length < 5 || !link) return;
         // 过滤掉明显不是AI相关的内容
-        if (!isTechRelated(title)) return;
+        if (!isAiRelated(title)) return;
 
         const articleId = uuidv4();
         upsertArticle({
@@ -96,11 +102,12 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
       }
     });
 
+    if ($(config.article).length === 0) throw new Error('页面中未找到文章容器，可能需要更新选择器');
     updateSourceLastCrawled(source.id);
     console.log(`[Web] ${source.name}: ${count} 篇文章`);
     return count;
-  } catch (err: any) {
-    const detail = err.cause?.code ? `${err.message} (${err.cause.code})` : err.message;
+  } catch (err) {
+    const detail = errorDetail(err);
     console.error(`[Web Error] ${source.name}: ${detail}`);
     markSourceFailure(source.id, detail);
     return 0;
@@ -108,23 +115,35 @@ async function scrapeWebSource(source: { id: string; name: string; url: string }
 }
 
 /** 抓取所有网页源 */
-export async function crawlAllWeb(): Promise<{ source: string; count: number }[]> {
-  const sources = getSources('news') as any[];
+export async function crawlAllWeb(): Promise<{ source: string; count: number; error?: string }[]> {
+  const sources = getSources('news');
   const results = [];
 
   for (const source of sources) {
     // 跳过有 RSS 的源和有特殊抓取器的源
     if (source.rss_url) continue;
-    if (source.id === 'hackernews' || source.id === 'github-trending' || source.id === 'arxiv' || source.id === 'the-batch') continue;
+    if (
+      source.id === 'hackernews' ||
+      source.id === 'github-trending' ||
+      source.id === 'arxiv' ||
+      source.id === 'the-batch'
+    )
+      continue;
 
     const config = SITE_CONFIGS[source.id];
+    if (!source.url) continue;
     if (!config) {
       console.log(`[Web] ${source.name}: 无页面选择器配置，跳过`);
       continue;
     }
 
-    const count = await scrapeWebSource(source);
-    results.push({ source: source.name, count });
+    const count = await scrapeWebSource({ ...source, url: source.url });
+    const current = getSources('news').find((s) => s.id === source.id);
+    results.push({
+      source: source.name,
+      count,
+      ...(current?.last_error ? { error: current.last_error } : {}),
+    });
   }
 
   return results;
@@ -150,7 +169,7 @@ function parseChineseTime(text: string): string | null {
   // 尝试解析 "2024年12月15日" 格式
   const match = text.match(/(\d{4})[年\-\/](\d{1,2})[月\-\/](\d{1,2})/);
   if (match) {
-    const [_, y, m, d] = match;
+    const [, y, m, d] = match;
     return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
   }
   // 尝试 "2小时前" "昨天" "3天前"
@@ -176,20 +195,6 @@ function parseChineseTime(text: string): string | null {
     return now.toISOString().substring(0, 10);
   }
   return null;
-}
-
-/** 过滤非科技类内容 */
-function isTechRelated(title: string): boolean {
-  const keywords = [
-    'AI', '模型', '大模型', 'GPT', 'Claude', 'OpenAI', 'DeepSeek', 'Gemini',
-    '智能', '算法', '芯片', 'GPU', '算力', '机器人', '自动驾驶',
-    'LLM', 'Agent', 'RAG', '推理', '训练', '开源', '编程', '代码',
-    'ChatGPT', 'Sora', '文心', '通义', '豆包', 'Kimi', '元宝',
-    '搜索', '语音', '视频生成', '图片生成', '多模态', '深度学习',
-    '机器学习', '神经网络', 'Transformer', '标注', '数据',
-    '融资', '发布', '上线', '评测', '基准',
-  ];
-  return keywords.some(kw => title.includes(kw));
 }
 
 /** 分类推断 */
