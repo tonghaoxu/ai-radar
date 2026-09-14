@@ -22,7 +22,6 @@ export function CategoryFilter({ selected, onSelect }: CategoryFilterProps) {
       {CATEGORIES.map((cat) => (
         <button
           key={cat}
-          aria-pressed={selected === cat}
           onClick={() => onSelect(cat)}
           className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
             selected === cat

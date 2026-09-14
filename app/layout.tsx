@@ -1,8 +1,8 @@
-import type { Metadata } from 'next';
-import { ThemeProvider } from 'next-themes';
-import { TooltipProvider } from '@/components/ui/tooltip';
-import { Navbar } from '@/components/layout/Navbar';
-import './globals.css';
+import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Navbar } from "@/components/layout/Navbar";
+import "./globals.css";
 
 // 这里原本用 next/font/google 加载 Geist / Geist Mono，已移除。原因有二：
 //
@@ -20,8 +20,8 @@ import './globals.css';
 // woff2），不要再引入编译期的外网依赖。
 
 export const metadata: Metadata = {
-  title: 'AI Radar — AI资讯聚合平台',
-  description: '一站式追踪AI前沿：大模型、论文、产品、政策动态',
+  title: "AI Radar — AI资讯聚合平台",
+  description: "一站式追踪AI前沿：大模型、论文、产品、政策动态",
 };
 
 export default function RootLayout({
@@ -30,18 +30,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className="h-full antialiased bg-background" suppressHydrationWarning>
+    <html
+      lang="zh-CN"
+      className="h-full antialiased bg-background"
+      suppressHydrationWarning
+    >
       <body className="flex flex-col bg-background">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <TooltipProvider>
-            <a
-              href="#main-content"
-              className="sr-only focus:not-sr-only focus:absolute focus:z-[100] focus:bg-background focus:p-3"
-            >
-              跳到主要内容
-            </a>
             <Navbar />
-            <main id="main-content">{children}</main>
+            <main>{children}</main>
           </TooltipProvider>
         </ThemeProvider>
       </body>

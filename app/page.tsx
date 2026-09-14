@@ -1,200 +1,267 @@
 'use client';
-import { useState, useSyncExternalStore } from 'react';
-import Link from 'next/link';
-import { ArrowRight, ExternalLink, Loader2, Sparkles } from 'lucide-react';
-import { useCollection } from '@/hooks/useCollection';
-import { fetchJson, mutateJson } from '@/lib/client-api';
-import { Feedback } from '@/components/Feedback';
-import { errorMessage } from '@/lib/errors';
-import { safeHttpUrl } from '@/lib/validation';
-import type { Article } from '@/lib/types';
 
-type Feed = { articles: Article[]; total: number; sourceCount: number };
-const subscribe = () => () => {};
-function formatTime(value: string | null) {
-  if (!value) return '时间未知';
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return '时间未知';
-  const diff = Math.max(0, Date.now() - timestamp);
-  if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return new Date(timestamp).toLocaleDateString('zh-CN');
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { Loader2, ExternalLink, ArrowRight, Sparkles } from 'lucide-react';
+import { mutateJson } from '@/lib/client-api';
+
+const CRAWL_INTERVAL = 10 * 60 * 1000;
+const SESSION_KEY = 'ai-radar-last-crawl-check';
+const SUMMARY_CACHE_KEY = 'ai-radar-summary-cache';
+
+interface Article {
+  id: string;
+  title: string;
+  url: string;
+  summary: string;
+  source_name: string;
+  published_at: string;
 }
-function HomeContent() {
-  const now = new Date();
-  const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const { data, loading, error, reload } = useCollection<Feed>(
-    `/api/articles?date=${day}&timezoneOffset=${now.getTimezoneOffset()}&limit=10`,
-  );
-  const [recent, setRecent] = useState<Feed | null>(null);
-  const [recentLoading, setRecentLoading] = useState(false);
-  const [summary, setSummary] = useState('');
-  const [summaryKey, setSummaryKey] = useState('');
-  const [summaryLoading, setSummaryLoading] = useState(false);
-  const [summaryError, setSummaryError] = useState('');
+
+/** 格式化发布时间为相对时间 */
+function formatTime(iso?: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  return d.toISOString().substring(0, 10);
+}
+
+export default function HomePage() {
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showSummary, setShowSummary] = useState(false);
-  const feed = recent || data;
-  const articles = feed?.articles || [];
-  const ids = articles.map((article) => article.id).join(',');
-  const loadRecent = async () => {
-    setRecentLoading(true);
+  const [summary, setSummaryState] = useState<string | null>(() => {
+    // 跨页面缓存恢复
     try {
-      setRecent(await fetchJson<Feed>('/api/articles?limit=10'));
-    } catch (error) {
-      setSummaryError(errorMessage(error));
-    } finally {
-      setRecentLoading(false);
+      const cached = sessionStorage.getItem(SUMMARY_CACHE_KEY);
+      if (cached) return JSON.parse(cached).summary;
+    } catch {}
+    return null;
+  });
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [lastSummaryIds, setLastSummaryIds] = useState<string>(() => {
+    try {
+      const cached = sessionStorage.getItem(SUMMARY_CACHE_KEY);
+      if (cached) return JSON.parse(cached).ids;
+    } catch {}
+    return '';
+  });
+
+  // 写入 sessionStorage 的封装
+  const setSummary = (text: string | null, ids?: string) => {
+    setSummaryState(text);
+    if (text && ids) {
+      setLastSummaryIds(ids);
+      sessionStorage.setItem(SUMMARY_CACHE_KEY, JSON.stringify({ summary: text, ids }));
     }
   };
-  const summarize = async () => {
+
+  useEffect(() => {
+    async function init() {
+      const lastCheck = sessionStorage.getItem(SESSION_KEY);
+      const shouldCheck = !lastCheck || Date.now() - parseInt(lastCheck) > CRAWL_INTERVAL;
+
+      // 检查是否需要自动抓取（与资讯流共享 sessionStorage 防重）
+      if (shouldCheck) {
+        // 立即占位，防止并发页面重复触发爬虫
+        sessionStorage.setItem(SESSION_KEY, String(Date.now()));
+        try {
+          const res = await fetch('/api/articles?limit=1');
+          const data = await res.json();
+          const lastArticle = data.articles?.[0];
+          if (lastArticle?.crawled_at) {
+            const lastCrawl = new Date(lastArticle.crawled_at).getTime();
+            if (Date.now() - lastCrawl > CRAWL_INTERVAL) {
+              console.log('[首页] 距上次抓取超过10分钟，自动触发');
+              await fetch('/api/articles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'crawl' }),
+              });
+            }
+          }
+        } catch {}
+      }
+
+      // 获取今日文章
+      const today = new Date().toISOString().substring(0, 10);
+      try {
+        const res = await fetch(`/api/articles?date=${today}&limit=20`);
+        const data = await res.json();
+        if (data.articles) {
+          let list = data.articles;
+          if (list.length < 5) {
+            const fallbackRes = await fetch('/api/articles?limit=20');
+            const fallbackData = await fallbackRes.json();
+            list = fallbackData.articles || [];
+          }
+          setArticles(list);
+        }
+      } catch (err) {
+        console.error('获取文章失败:', err);
+      }
+      setLoading(false);
+    }
+    init();
+  }, []);
+
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const weekday = weekdays[today.getDay()];
+
+  // 取前 10 条用于总结，前 5 条用于展示
+  const topArticles = articles.slice(0, 5);
+  const summaryArticles = articles.slice(0, 10);
+
+  const handleSummary = async () => {
+    // 已展开 → 收起
     if (showSummary) {
       setShowSummary(false);
       return;
     }
-    setShowSummary(true);
-    if (summary && summaryKey === ids) return;
-    setSummaryLoading(true);
-    setSummaryError('');
-    setSummary('');
-    try {
-      const result = await mutateJson<{ summary: string }>('/api/summary', {
-        articleIds: articles.slice(0, 10).map((article) => article.id),
-      });
-      setSummary(result.summary);
-      setSummaryKey(ids);
-    } catch (error) {
-      setSummaryError(errorMessage(error));
-    } finally {
-      setSummaryLoading(false);
+
+    // 已有缓存 → 检查文章是否变化
+    const currentIds = summaryArticles.map(a => a.id).join(',');
+    if (summary && currentIds === lastSummaryIds) {
+      // 缓存命中，直接展开
+      setShowSummary(true);
+      return;
     }
+
+    // 需要重新总结
+    if (summaryArticles.length === 0) return;
+
+    setSummaryLoading(true);
+    setShowSummary(true);
+
+    try {
+      // 服务端只根据已收录文章生成总结，避免把浏览器传入的任意内容或 URL
+      // 当作可信抓取目标；页面的缓存与反馈方式保持不变。
+      const data = await mutateJson<{ summary: string }>('/api/summary', {
+        articleIds: summaryArticles.map((article) => article.id),
+      });
+      if (data.summary) {
+        setSummary(data.summary, currentIds);
+      } else {
+        setSummary('总结生成失败: 未返回有效内容');
+      }
+    } catch {
+      setSummary('网络错误，请稍后重试');
+    }
+    setSummaryLoading(false);
   };
+
   return (
-    <div className="mx-auto flex min-h-[calc(100dvh-7rem)] max-w-2xl flex-col px-4 py-6 sm:px-6">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <p className="text-xs tracking-widest text-muted-foreground">AI RADAR · 每日速览</p>
-          <h1 className="mt-1 text-2xl font-semibold">
-            {recent ? '最近 AI 资讯' : '今日 AI 资讯'}
-          </h1>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {now.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })}
-        </p>
-      </div>
-      <Feedback message={error} onRetry={reload} />
+    <div className="max-w-2xl mx-auto px-6 h-[calc(100vh-3.5rem)] flex flex-col">
+      {/* 加载状态 */}
       {loading ? (
-        <div role="status" className="flex flex-1 items-center justify-center py-20">
-          <Loader2 aria-label="加载资讯" className="h-6 w-6 animate-spin" />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : !error && !articles.length ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-4 py-16 text-muted-foreground">
-          <p>{recent ? '还没有收录的资讯' : '今天暂时没有新资讯'}</p>
-          {!recent && (
-            <button className="text-sm underline" disabled={recentLoading} onClick={loadRecent}>
-              {recentLoading ? '加载中…' : '查看最近资讯'}
-            </button>
-          )}
-          <Link href="/news" className="text-sm underline">
-            前往资讯流抓取最新内容 →
+      ) : topArticles.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground">
+          <p className="mb-4">暂无今日资讯</p>
+          <Link
+            href="/news"
+            className="text-sm underline underline-offset-4 hover:text-foreground"
+          >
+            前往资讯流手动抓取 →
           </Link>
         </div>
-      ) : (
-        <div className="flex-1 space-y-3">
-          <p className="mb-4 text-xs text-muted-foreground">
-            {recent ? '最近收录' : '今日收录'} {feed?.total || 0} 篇 · {feed?.sourceCount || 0}{' '}
-            个来源 · 精选五条速览
-          </p>
-          {articles.slice(0, 5).map((article) => (
-            <a
-              key={article.id}
-              href={safeHttpUrl(article.url)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group block rounded-xl border bg-card p-4 transition-colors hover:border-primary/40 hover:shadow-sm"
-            >
-              <h2 className="mb-1 line-clamp-2 font-semibold leading-snug group-hover:text-primary">
-                {article.title}
-              </h2>
-              <p className="mb-2 line-clamp-2 text-sm text-muted-foreground">
-                {article.summary || `来自 ${article.source_name || '未知来源'} 的资讯`}
-              </p>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{article.source_name}</span>
-                <span>·</span>
-                <time dateTime={article.published_at || undefined}>
-                  {formatTime(article.published_at)}
-                </time>
-                <ExternalLink className="ml-auto h-3 w-3" />
+      ) : showSummary && (summary || summaryLoading) ? (
+        /* AI 总结卡片 — 覆盖文章区域 */
+        <div className="flex-1 flex flex-col justify-center">
+          <div className="rounded-xl border bg-card p-6">
+            <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-yellow-500" />
+              今日 AI 要闻总结
+            </h2>
+            {summaryLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground py-8 justify-center">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                AI 正在分析今日资讯...
               </div>
-            </a>
-          ))}
-        </div>
-      )}
-      {showSummary && (
-        <section aria-label="AI 资讯总结" className="my-5 rounded-xl border bg-muted/40 p-5">
-          <h2 className="mb-3 flex items-center gap-2 font-semibold">
-            <Sparkles className="h-4 w-4" />
-            {recent ? '最近资讯总结' : '今日资讯总结'}
-          </h2>
-          {summaryLoading ? (
-            <p role="status" className="text-sm">
-              正在分析摘要…
-            </p>
-          ) : (
-            <>
-              <p className="whitespace-pre-wrap text-sm leading-7">{summary}</p>
-              <Feedback message={summaryError} />
-              <p className="mt-3 text-xs text-muted-foreground">
-                基于已收录的标题和摘要生成，请结合原文核对。
+            ) : (
+              <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                {summary}
               </p>
-              {summary && (
-                <ol className="mt-2 space-y-1 text-xs">
-                  {articles.slice(0, 10).map((article, index) => (
-                    <li key={article.id}>
-                      <a
-                        href={safeHttpUrl(article.url)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="hover:underline"
-                      >
-                        [{index + 1}] {article.title}
-                      </a>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </>
-          )}
-        </section>
+            )}
+            {!summaryLoading && (
+              <button
+                onClick={() => setShowSummary(false)}
+                className="mt-4 text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
+              >
+                收起总结，查看资讯列表
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* 五张卡片 — 垂直居中 */}
+          <div className="flex-1 flex flex-col justify-center space-y-3">
+            {topArticles.map((article) => (
+              <a
+                key={article.id}
+                href={article.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block group"
+              >
+                <div className="rounded-xl border bg-card p-4 transition-all duration-150 hover:shadow-md hover:border-primary/30 hover:-translate-y-0.5">
+                  <h2 className="font-semibold leading-snug mb-1 line-clamp-2 group-hover:text-primary transition-colors">
+                    {article.title}
+                  </h2>
+                  <p className="text-sm text-muted-foreground line-clamp-1 mb-1.5">
+                    {article.summary || `来自 ${article.source_name} 的 AI 资讯`}
+                  </p>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>{article.source_name}</span>
+                    <span>·</span>
+                    <span>{formatTime(article.published_at)}</span>
+                    <ExternalLink className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </>
       )}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-        {articles.length > 0 && (
-          <button
-            onClick={summarize}
-            disabled={summaryLoading}
-            className="inline-flex items-center gap-2 rounded-full border bg-secondary/50 px-4 py-2 text-sm disabled:opacity-50"
+
+      {/* 底部栏：日期 | AI总结 | 查看全部 */}
+      <div className="grid grid-cols-3 items-center py-4 border-t border-border/40">
+        <span className="text-sm text-muted-foreground text-left">
+          {dateStr} {weekday}
+        </span>
+        <div className="flex justify-center">
+          {topArticles.length > 0 && (
+            <button
+              onClick={handleSummary}
+              disabled={summaryLoading}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border bg-secondary/50 text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              {summaryLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {summaryLoading ? '总结中...' : showSummary && summary ? '收起总结' : 'AI 总结今日资讯'}
+            </button>
+          )}
+        </div>
+        <div className="flex justify-end">
+          <Link
+            href="/news"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Sparkles className="h-4 w-4" />
-            {summaryLoading ? '总结中…' : showSummary ? '收起总结' : 'AI 资讯总结'}
-          </button>
-        )}
-        <Link
-          href="/news"
-          className="ml-auto inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          查看全部资讯
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+            查看全部资讯
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
       </div>
     </div>
   );
-}
-export default function HomePage() {
-  const client = useSyncExternalStore(
-    subscribe,
-    () => true,
-    () => false,
-  );
-  return client ? <HomeContent /> : <p className="p-8 text-center">加载资讯…</p>;
 }
